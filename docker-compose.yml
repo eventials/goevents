@@ -1,0 +1,19 @@
+version: '2'
+services:
+  app:
+    build: .
+    working_dir: /go/src/github.com/eventials/goevents
+    command: dockerize -wait tcp://broker:5672 -timeout 60s go run main.go
+    environment:
+      APP_AMQP_URL: 'amqp://guest:guest@broker:5672/'
+      APP_AMQP_AUTOACK: 'false'
+      APP_AMQP_EXCHANGE: event_dispatcher
+      APP_AMQP_QUEUE: webhooks
+    links:
+     - broker
+    volumes:
+     - .:/go/src/github.com/eventials/goevents
+  broker:
+    image: rabbitmq:3.6-management
+    # ports:
+    #  - "15672:15672"
