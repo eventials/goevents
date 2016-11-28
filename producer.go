@@ -16,14 +16,12 @@ func NewProducer(c *Connection) *Producer {
 	}
 }
 
-func (p *Producer) Publish(action string, data interface{}) error {
+func (p *Producer) Publish(action string, data []byte) error {
 	msg := amqp.Publishing{
 		DeliveryMode:    amqp.Persistent,
 		Timestamp:       time.Now(),
-		ContentType:     "application/json",
-		ContentEncoding: "utf-8",
 		Body:            data,
 	}
 
-	return c.channel.Publish(c.exchangeName, routingKey, false, false, msg)
+	return p.conn.channel.Publish(p.conn.exchangeName, action, false, false, msg)
 }
