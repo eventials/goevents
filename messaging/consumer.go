@@ -1,4 +1,4 @@
-package events
+package messaging
 
 type EventHandler func(body []byte) bool
 

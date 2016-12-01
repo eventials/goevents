@@ -4,13 +4,14 @@ import (
 	"regexp"
 	"strings"
 
-	base "github.com/eventials/goevents"
+	"github.com/eventials/goevents/messaging"
+
 	amqplib "github.com/streadway/amqp"
 )
 
 type handler struct {
 	action  string
-	handler base.EventHandler
+	handler messaging.EventHandler
 	re      *regexp.Regexp
 }
 
@@ -20,7 +21,7 @@ type Consumer struct {
 	handlers []handler
 }
 
-func NewConsumer(c base.Connection, autoAck bool) (base.Consumer, error) {
+func NewConsumer(c messaging.Connection, autoAck bool) (messaging.Consumer, error) {
 	amqpConn := c.(*Connection)
 
 	return &Consumer{
@@ -56,7 +57,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	}
 }
 
-func (c *Consumer) getHandler(action string) (base.EventHandler, bool) {
+func (c *Consumer) getHandler(action string) (messaging.EventHandler, bool) {
 	for _, h := range c.handlers {
 		if h.re.MatchString(action) {
 			return h.handler, true
@@ -66,7 +67,7 @@ func (c *Consumer) getHandler(action string) (base.EventHandler, bool) {
 	return nil, false
 }
 
-func (c *Consumer) Subscribe(action string, handlerFn base.EventHandler) error {
+func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) error {
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)

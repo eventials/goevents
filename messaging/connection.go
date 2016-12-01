@@ -1,4 +1,4 @@
-package events
+package messaging
 
 type Connection interface {
 	Consumer(autoAck bool) (Consumer, error)

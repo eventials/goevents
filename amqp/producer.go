@@ -3,7 +3,8 @@ package amqp
 import (
 	"time"
 
-	base "github.com/eventials/goevents"
+	"github.com/eventials/goevents/messaging"
+
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -11,7 +12,7 @@ type Producer struct {
 	conn *Connection
 }
 
-func NewProducer(c base.Connection) (base.Producer, error) {
+func NewProducer(c messaging.Connection) (messaging.Producer, error) {
 	amqpConn := c.(*Connection)
 
 	return &Producer{
