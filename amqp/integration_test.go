@@ -11,7 +11,7 @@ func TestPublishConsume(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "events-queue", "events-exchange")
 
 	assert.Nil(t, err)
 

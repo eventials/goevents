@@ -15,6 +15,7 @@ type Connection struct {
 	queueName    string
 }
 
+// NewConnection returns an AMQP Connection.
 func NewConnection(url, exchange, queue string) (messaging.Connection, error) {
 	conn, err := amqplib.Dial(url)
 
@@ -64,14 +65,17 @@ func NewConnection(url, exchange, queue string) (messaging.Connection, error) {
 	}, nil
 }
 
+// Consumer returns an AMQP Consumer.
 func (c *Connection) Consumer(autoAck bool) (messaging.Consumer, error) {
 	return NewConsumer(c, autoAck)
 }
 
+// Producer returns an AMQP Producer.
 func (c *Connection) Producer() (messaging.Producer, error) {
 	return NewProducer(c)
 }
 
+// Close closes the AMQP connection.
 func (c *Connection) Close() {
 	c.channel.Close()
 	c.connection.Close()
