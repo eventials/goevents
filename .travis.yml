@@ -1,0 +1,19 @@
+language: go
+go:
+  - 1.6
+  - tip
+install:
+  - go get github.com/streadway/amqp
+  - go get github.com/stretchr/testify
+services:
+  - rabbitmq
+addons:
+  hosts:
+    - broker
+script: go test -v ./...
+notifications:
+  email:
+    recipients:
+      - devs@eventials.com
+    on_success: never
+    on_failure: always
