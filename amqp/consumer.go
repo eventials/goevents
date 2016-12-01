@@ -1,16 +1,17 @@
-package events
+package amqp
 
 import (
-	"github.com/streadway/amqp"
 	"regexp"
 	"strings"
-)
 
-type eventHandler func(body []byte) bool
+	"github.com/eventials/goevents/messaging"
+
+	amqplib "github.com/streadway/amqp"
+)
 
 type handler struct {
 	action  string
-	handler eventHandler
+	handler messaging.EventHandler
 	re      *regexp.Regexp
 }
 
@@ -20,15 +21,17 @@ type Consumer struct {
 	handlers []handler
 }
 
-func NewConsumer(c *Connection, autoAck bool) *Consumer {
+func NewConsumer(c messaging.Connection, autoAck bool) (messaging.Consumer, error) {
+	amqpConn := c.(*Connection)
+
 	return &Consumer{
-		c,
+		amqpConn,
 		autoAck,
 		make([]handler, 0),
-	}
+	}, nil
 }
 
-func (c *Consumer) dispatch(msg amqp.Delivery) {
+func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	if fn, ok := c.getHandler(msg.RoutingKey); ok {
 		defer func() {
 			if err := recover(); err != nil {
@@ -54,7 +57,7 @@ func (c *Consumer) dispatch(msg amqp.Delivery) {
 	}
 }
 
-func (c *Consumer) getHandler(action string) (eventHandler, bool) {
+func (c *Consumer) getHandler(action string) (messaging.EventHandler, bool) {
 	for _, h := range c.handlers {
 		if h.re.MatchString(action) {
 			return h.handler, true
@@ -64,7 +67,7 @@ func (c *Consumer) getHandler(action string) (eventHandler, bool) {
 	return nil, false
 }
 
-func (c *Consumer) Subscribe(action string, handlerFn eventHandler) error {
+func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) error {
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)

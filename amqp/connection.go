@@ -1,20 +1,22 @@
-package events
+package amqp
 
 import (
-	"github.com/streadway/amqp"
+	"github.com/eventials/goevents/messaging"
+
+	amqplib "github.com/streadway/amqp"
 )
 
 type Connection struct {
-	connection *amqp.Connection
-	channel    *amqp.Channel
-	queue      *amqp.Queue
+	connection *amqplib.Connection
+	channel    *amqplib.Channel
+	queue      *amqplib.Queue
 
 	exchangeName string
 	queueName    string
 }
 
-func NewConnection(url, exchange, queue string) (*Connection, error) {
-	conn, err := amqp.Dial(url)
+func NewConnection(url, exchange, queue string) (messaging.Connection, error) {
+	conn, err := amqplib.Dial(url)
 
 	if err != nil {
 		return nil, err
@@ -62,11 +64,11 @@ func NewConnection(url, exchange, queue string) (*Connection, error) {
 	}, nil
 }
 
-func (c *Connection) Consumer(autoAck bool) *Consumer {
+func (c *Connection) Consumer(autoAck bool) (messaging.Consumer, error) {
 	return NewConsumer(c, autoAck)
 }
 
-func (c *Connection) Producer() *Producer {
+func (c *Connection) Producer() (messaging.Producer, error) {
 	return NewProducer(c)
 }
 
