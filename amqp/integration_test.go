@@ -1,4 +1,4 @@
-package events
+package amqp
 
 import (
 	"testing"
@@ -18,9 +18,12 @@ func TestPublishConsume(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("my_action_1", func(body []byte) bool {
 		func1 <- true
@@ -34,7 +37,9 @@ func TestPublishConsume(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("my_action_1", []byte(""))
 
@@ -60,9 +65,12 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("webinar.*", func(body []byte) bool {
 		func1 <- true
@@ -76,7 +84,9 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("webinar.state_changed", []byte(""))
 
@@ -102,9 +112,12 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("webinar.*", func(body []byte) bool {
 		func1 <- true
@@ -118,7 +131,9 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("webinar.state_changed", []byte(""))
 
@@ -144,9 +159,12 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("webinar.state_changed", func(body []byte) bool {
 		func1 <- true
@@ -160,7 +178,9 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("webinar.state_changed", []byte(""))
 
@@ -186,9 +206,12 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("my_action", func(body []byte) bool {
 		if calledOnce {
@@ -202,7 +225,9 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("my_action", []byte(""))
 
@@ -226,9 +251,12 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 	defer conn.Close()
 
 	// Clean all messages if any...
-	conn.channel.QueuePurge(conn.queueName, false)
+	amqpConn := conn.(*Connection)
+	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
 
-	c := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false)
+
+	assert.Nil(t, err)
 
 	c.Subscribe("my_action", func(body []byte) bool {
 		if calledOnce {
@@ -242,7 +270,9 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 
 	c.Listen()
 
-	p := NewProducer(conn)
+	p, err := NewProducer(conn)
+
+	assert.Nil(t, err)
 
 	err = p.Publish("my_action", []byte(""))
 
