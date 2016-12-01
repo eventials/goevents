@@ -21,10 +21,10 @@ func (c *Consumer) Unsubscribe(action string) error {
 
 func (c *Consumer) Listen() error {
 	args := c.Called()
-    return args.Error(1)
+	return args.Error(1)
 }
 
 func (c *Consumer) ListenForever() error {
 	args := c.Called()
-    return args.Error(1)
+	return args.Error(1)
 }
