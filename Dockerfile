@@ -7,6 +7,5 @@ RUN tar -C /usr/local/bin -xzvf dockerize-linux-amd64-v0.2.0.tar.gz
 RUN mkdir -p /go/src/github.com/eventials/goevents
 WORKDIR /go/src/github.com/eventials/goevents
 
-RUN go get github.com/eventials/golog
 RUN go get github.com/streadway/amqp
 RUN go get github.com/stretchr/testify

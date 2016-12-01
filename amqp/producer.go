@@ -12,6 +12,7 @@ type Producer struct {
 	conn *Connection
 }
 
+// NewProducer returns a new AMQP Producer.
 func NewProducer(c messaging.Connection) (messaging.Producer, error) {
 	amqpConn := c.(*Connection)
 
@@ -20,6 +21,7 @@ func NewProducer(c messaging.Connection) (messaging.Producer, error) {
 	}, nil
 }
 
+// Publish publishes an action.
 func (p *Producer) Publish(action string, data []byte) error {
 	msg := amqplib.Publishing{
 		DeliveryMode: amqplib.Persistent,

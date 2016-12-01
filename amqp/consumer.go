@@ -21,6 +21,7 @@ type Consumer struct {
 	handlers []handler
 }
 
+// NewConsumer returns a new AMQP Consumer.
 func NewConsumer(c messaging.Connection, autoAck bool) (messaging.Consumer, error) {
 	amqpConn := c.(*Connection)
 
@@ -67,6 +68,7 @@ func (c *Consumer) getHandler(action string) (messaging.EventHandler, bool) {
 	return nil, false
 }
 
+// Subscribe allow to subscribe an action handler.
 func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) error {
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
@@ -103,6 +105,7 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) er
 	return nil
 }
 
+// Unsubscribe allows to unsubscribe an action handler.
 func (c *Consumer) Unsubscribe(action string) error {
 	err := c.conn.channel.QueueUnbind(
 		c.conn.queueName,    // queue name
@@ -131,6 +134,7 @@ func (c *Consumer) Unsubscribe(action string) error {
 	return nil
 }
 
+// Listen start to listen for new messages.
 func (c *Consumer) Listen() error {
 	msgs, err := c.conn.channel.Consume(
 		c.conn.queueName, // queue
@@ -155,6 +159,7 @@ func (c *Consumer) Listen() error {
 	return nil
 }
 
+// ListenForever start to listen for new messages and locks the current thread.
 func (c *Consumer) ListenForever() error {
 	err := c.Listen()
 
