@@ -32,7 +32,7 @@ if err != nil {
     panic(err)
 }
 
-c.Subscribe("my_action", func(body []byte) bool {
+c.Subscribe("object.*", func(body []byte) bool {
     fmt.Println(body)
     return true
 })
@@ -53,7 +53,7 @@ if err != nil {
     panic(err)
 }
 
-err = p.Publish("my_action", []byte("message"))
+err = p.Publish("object.my_action", []byte("message"))
 
 if err != nil {
     panic(err)
