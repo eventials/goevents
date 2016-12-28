@@ -11,19 +11,21 @@ func TestPublishConsume(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "events-queue", "events-exchange")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "events-exchange", "events-queue")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("my_action_1", func(body []byte) bool {
 		func1 <- true
@@ -35,9 +37,9 @@ func TestPublishConsume(t *testing.T) {
 		return true
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "events-exchange", "events-queue")
 
 	assert.Nil(t, err)
 
@@ -58,19 +60,21 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("webinar.*", func(body []byte) bool {
 		func1 <- true
@@ -82,9 +86,9 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 		return true
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
 
@@ -105,19 +109,21 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("webinar.*", func(body []byte) bool {
 		func1 <- true
@@ -129,9 +135,9 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 		return true
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
 
@@ -152,19 +158,21 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("webinar.state_changed", func(body []byte) bool {
 		func1 <- true
@@ -176,9 +184,9 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 		return true
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
 
@@ -199,19 +207,21 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 	calledOnce := false
 	called := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("my_action", func(body []byte) bool {
 		if calledOnce {
@@ -223,9 +233,9 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 		}
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
 
@@ -244,19 +254,21 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 	calledOnce := false
 	called := make(chan bool)
 
-	conn, err := NewConnection("amqp://guest:guest@broker:5672/", "event_PublishConsumeer", "webhooks")
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
 	assert.Nil(t, err)
 
 	defer conn.Close()
 
-	// Clean all messages if any...
-	amqpConn := conn.(*Connection)
-	amqpConn.channel.QueuePurge(amqpConn.queueName, false)
-
-	c, err := NewConsumer(conn, false)
+	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	c.Subscribe("my_action", func(body []byte) bool {
 		if calledOnce {
@@ -268,9 +280,9 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 		}
 	})
 
-	c.Listen()
+	go c.Consume()
 
-	p, err := NewProducer(conn)
+	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
 
 	assert.Nil(t, err)
 

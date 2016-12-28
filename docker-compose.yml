@@ -10,5 +10,5 @@ services:
      - .:/go/src/github.com/eventials/goevents
   broker:
     image: rabbitmq:3.6-management
-    # ports:
-    #  - "15672:15672"
+    ports:
+     - "15672:15672"
