@@ -9,5 +9,5 @@ type Connection interface {
 	Producer(exchange, queue string) (Producer, error)
 	Close()
 	NotifyConnectionClose() <-chan *amqplib.Error
-	WaitUntilConnectionClose()
+	WaitUntilConnectionCloses()
 }

@@ -47,5 +47,6 @@ func main() {
 	go consumerA.Consume()
 	go consumerB.Consume()
 
-	conn.WaitUntilConnectionClose()
+	fmt.Println("Waiting messages")
+	conn.WaitUntilConnectionCloses()
 }

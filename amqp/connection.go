@@ -42,8 +42,6 @@ func (c *Connection) Close() {
 	c.connection.Close()
 }
 
-func (c *Connection) WaitUntilConnectionClose() {
-	select {
-	case <-c.NotifyConnectionClose():
-	}
+func (c *Connection) WaitUntilConnectionCloses() {
+	<-c.NotifyConnectionClose()
 }
