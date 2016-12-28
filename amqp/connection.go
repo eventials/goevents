@@ -1,8 +1,8 @@
 package amqp
 
 import (
+	"errors"
 	"github.com/eventials/goevents/messaging"
-
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -23,8 +23,14 @@ func NewConnection(url string) (messaging.Connection, error) {
 	}, nil
 }
 
-func (c *Connection) NotifyConnectionClose() <-chan *amqplib.Error {
-	return c.connection.NotifyClose(make(chan *amqplib.Error))
+func (c *Connection) NotifyConnectionClose() <-chan error {
+	ch := make(chan error)
+
+	go func() {
+		ch <- errors.New((<-c.connection.NotifyClose(make(chan *amqplib.Error))).Error())
+	}()
+
+	return ch
 }
 
 // Consumer returns an AMQP Consumer.
