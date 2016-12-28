@@ -20,13 +20,13 @@ Another application consume these events and maybe create new events.
 **The consumer**
 
 ```go
-conn, err := NewConnection("amqp://guest:guest@127.0.0.1:5672/", "events-queue", "events-exchange")
+conn, err := NewConnection("amqp://guest:guest@127.0.0.1:5672/")
 
 if err != nil {
     panic(err)
 }
 
-c, err := NewConsumer(conn, false)
+c, err := NewConsumer(conn, false, "events-exchange", "events-queue")
 
 if err != nil {
     panic(err)
@@ -36,18 +36,22 @@ c.Subscribe("object.*", func(body []byte) bool {
     fmt.Println(body)
     return true
 })
+
+go c.Consume()
+
+conn.WaitUntilConnectionClose()
 ```
 
 **The producer**
 
 ```go
-conn, err := NewConnection("amqp://guest:guest@127.0.0.1:5672/", "events-queue", "events-exchange")
+conn, err := NewConnection("amqp://guest:guest@127.0.0.1:5672/")
 
 if err != nil {
     panic(err)
 }
 
-p, err := NewProducer(conn)
+p, err := NewProducer(conn, "events-exchange", "events-queue")
 
 if err != nil {
     panic(err)

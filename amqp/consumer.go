@@ -19,17 +19,64 @@ type Consumer struct {
 	conn     *Connection
 	autoAck  bool
 	handlers []handler
+
+	channel *amqplib.Channel
+	queue   *amqplib.Queue
+
+	exchangeName string
+	queueName    string
 }
 
 // NewConsumer returns a new AMQP Consumer.
-func NewConsumer(c messaging.Connection, autoAck bool) (messaging.Consumer, error) {
+func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	amqpConn := c.(*Connection)
+
+	ch, err := amqpConn.connection.Channel()
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = ch.ExchangeDeclare(
+		exchange, // name
+		"topic",  // type
+		true,     // durable
+		false,    // auto-delete
+		false,    // internal
+		false,    // no-wait
+		nil,      // arguments
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := ch.QueueDeclare(
+		queue, // name
+		true,  // durable
+		false, // auto-delete
+		false, // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+
+	if err != nil {
+		return nil, err
+	}
 
 	return &Consumer{
 		amqpConn,
 		autoAck,
 		make([]handler, 0),
+		ch,
+		&q,
+		exchange,
+		queue,
 	}, nil
+}
+
+func (c *Consumer) Close() {
+	c.channel.Close()
 }
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
@@ -78,18 +125,12 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) er
 		return err
 	}
 
-	for _, h := range c.handlers {
-		if h.action == action {
-			// return fmt.Errorf("Action '%s' already registered.", action)
-		}
-	}
-
-	err = c.conn.channel.QueueBind(
-		c.conn.queueName,    // queue name
-		action,              // routing key
-		c.conn.exchangeName, // exchange
-		false,               // no-wait
-		nil,                 // arguments
+	err = c.channel.QueueBind(
+		c.queueName,    // queue name
+		action,         // routing key
+		c.exchangeName, // exchange
+		false,          // no-wait
+		nil,            // arguments
 	)
 
 	if err != nil {
@@ -107,11 +148,11 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) er
 
 // Unsubscribe allows to unsubscribe an action handler.
 func (c *Consumer) Unsubscribe(action string) error {
-	err := c.conn.channel.QueueUnbind(
-		c.conn.queueName,    // queue name
-		action,              // routing key
-		c.conn.exchangeName, // exchange
-		nil,                 // arguments
+	err := c.channel.QueueUnbind(
+		c.queueName,    // queue name
+		action,         // routing key
+		c.exchangeName, // exchange
+		nil,            // arguments
 	)
 
 	if err != nil {
@@ -135,37 +176,24 @@ func (c *Consumer) Unsubscribe(action string) error {
 }
 
 // Listen start to listen for new messages.
-func (c *Consumer) Listen() error {
-	msgs, err := c.conn.channel.Consume(
-		c.conn.queueName, // queue
-		"",               // consumer
-		c.autoAck,        // auto ack
-		false,            // exclusive
-		false,            // no local
-		false,            // no wait
-		nil,              // args
+func (c *Consumer) Consume() error {
+	msgs, err := c.channel.Consume(
+		c.queueName, // queue
+		"",          // consumer
+		c.autoAck,   // auto ack
+		false,       // exclusive
+		false,       // no local
+		false,       // no wait
+		nil,         // args
 	)
 
 	if err != nil {
 		return err
 	}
 
-	go func() {
-		for m := range msgs {
-			c.dispatch(m)
-		}
-	}()
-
-	return nil
-}
-
-// ListenForever start to listen for new messages and locks the current thread.
-func (c *Consumer) ListenForever() error {
-	err := c.Listen()
-
-	if err != nil {
-		return err
+	for m := range msgs {
+		c.dispatch(m)
 	}
 
-	select {}
+	return nil
 }
