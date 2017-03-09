@@ -5,6 +5,6 @@ type EventHandler func(body []byte) bool
 type Consumer interface {
 	Subscribe(action string, handler EventHandler) error
 	Unsubscribe(action string) error
-	Consume() error
+	Consume()
 	Close()
 }

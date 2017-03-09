@@ -8,7 +8,10 @@ type Producer struct {
 	mock.Mock
 }
 
-func (p *Producer) Publish(action string, data []byte) error {
+func (p *Producer) Publish(action string, data []byte) {
 	args := p.Called(action, data)
-	return args.Error(1)
+}
+
+func (p *Producer) Close() {
+	args := p.Called()
 }

@@ -3,9 +3,12 @@ package amqp
 import (
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/eventials/goevents/messaging"
 
+	log "github.com/Sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -16,6 +19,9 @@ type handler struct {
 }
 
 type Consumer struct {
+	config ConsumerConfig
+	m      sync.Mutex
+
 	conn     *Connection
 	autoAck  bool
 	handlers []handler
@@ -25,58 +31,103 @@ type Consumer struct {
 
 	exchangeName string
 	queueName    string
+
+	closed bool
+}
+
+// ConsumerConfig to be used when creating a new producer.
+type ConsumerConfig struct {
+	consumeRetryInterval time.Duration
 }
 
 // NewConsumer returns a new AMQP Consumer.
+// Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
-	amqpConn := c.(*Connection)
+	return NewConsumerWithConfig(c, autoAck, exchange, queue, ConsumerConfig{
+		consumeRetryInterval: 2 * time.Second,
+	})
+}
 
-	ch, err := amqpConn.connection.Channel()
-
-	if err != nil {
-		return nil, err
+// NewConsumerWithConfig returns a new AMQP Consumer.
+func NewConsumerWithConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
+	consumer := &Consumer{
+		config:       config,
+		conn:         c.(*Connection),
+		autoAck:      autoAck,
+		handlers:     make([]handler, 0),
+		exchangeName: exchange,
+		queueName:    queue,
 	}
 
-	err = ch.ExchangeDeclare(
-		exchange, // name
-		"topic",  // type
-		true,     // durable
-		false,    // auto-delete
-		false,    // internal
-		false,    // no-wait
-		nil,      // arguments
-	)
+	err := consumer.setupTopology()
 
-	if err != nil {
-		return nil, err
-	}
+	go consumer.handleReestablishedConnnection()
 
-	q, err := ch.QueueDeclare(
-		queue, // name
-		true,  // durable
-		false, // auto-delete
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &Consumer{
-		amqpConn,
-		autoAck,
-		make([]handler, 0),
-		ch,
-		&q,
-		exchange,
-		queue,
-	}, nil
+	return consumer, err
 }
 
 func (c *Consumer) Close() {
+	c.closed = true
 	c.channel.Close()
+}
+
+func (c *Consumer) setupTopology() error {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	var err error
+
+	c.channel, err = c.conn.OpenChannel()
+
+	if err != nil {
+		return err
+	}
+
+	err = c.channel.ExchangeDeclare(
+		c.exchangeName, // name
+		"topic",        // type
+		true,           // durable
+		false,          // auto-delete
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
+	)
+
+	if err != nil {
+		return err
+	}
+
+	q, err := c.channel.QueueDeclare(
+		c.queueName, // name
+		true,        // durable
+		false,       // auto-delete
+		false,       // exclusive
+		false,       // no-wait
+		nil,         // arguments
+	)
+
+	c.queue = &q
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Consumer) handleReestablishedConnnection() {
+	for !c.closed {
+		<-c.conn.NotifyReestablish()
+
+		err := c.setupTopology()
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"type":  "amqp",
+				"error": err,
+			}).Error("Error setting up topology after reconnection")
+		}
+	}
 }
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
@@ -176,24 +227,48 @@ func (c *Consumer) Unsubscribe(action string) error {
 }
 
 // Listen start to listen for new messages.
-func (c *Consumer) Consume() error {
-	msgs, err := c.channel.Consume(
-		c.queueName, // queue
-		"",          // consumer
-		c.autoAck,   // auto ack
-		false,       // exclusive
-		false,       // no local
-		false,       // no wait
-		nil,         // args
-	)
+func (c *Consumer) Consume() {
+	for !c.closed {
+		log.WithFields(log.Fields{
+			"type":  "amqp",
+			"queue": c.queueName,
+		}).Info("Setting up consumer channel...")
 
-	if err != nil {
-		return err
+		msgs, err := c.channel.Consume(
+			c.queueName, // queue
+			"",          // consumer
+			c.autoAck,   // auto ack
+			false,       // exclusive
+			false,       // no local
+			false,       // no wait
+			nil,         // args
+		)
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"type":  "amqp",
+				"queue": c.queueName,
+				"error": err,
+			}).Info("Error setting up consumer...")
+
+			time.Sleep(c.config.consumeRetryInterval)
+
+			continue
+		}
+
+		log.WithFields(log.Fields{
+			"type":  "amqp",
+			"queue": c.queueName,
+		}).Info("Consuming messages...")
+
+		for m := range msgs {
+			c.dispatch(m)
+		}
+
+		log.WithFields(log.Fields{
+			"type":   "amqp",
+			"queue":  c.queueName,
+			"closed": c.closed,
+		}).Info("Consumption stopped")
 	}
-
-	for m := range msgs {
-		c.dispatch(m)
-	}
-
-	return nil
 }
