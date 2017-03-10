@@ -1,7 +1,6 @@
 package amqp
 
 import (
-	"errors"
 	"sync"
 	"time"
 
@@ -61,9 +60,7 @@ func (c *Connection) NotifyConnectionClose() <-chan error {
 	ch := make(chan error)
 
 	go func() {
-		se := <-c.connection.NotifyClose(make(chan *amqplib.Error))
-
-		ch <- errors.New(se.Error())
+		ch <- <-c.connection.NotifyClose(make(chan *amqplib.Error))
 	}()
 
 	return ch
