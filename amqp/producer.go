@@ -38,15 +38,13 @@ type Producer struct {
 // ProducerConfig to be used when creating a new producer.
 type ProducerConfig struct {
 	publishInterval time.Duration
-	publishRetries  int
 }
 
 // NewProducer returns a new AMQP Producer.
-// Uses a default ProducerConfig with 2 second of publish interval and 10 publish retries.
+// Uses a default ProducerConfig with 2 second of publish interval.
 func NewProducer(c messaging.Connection, exchange string) (messaging.Producer, error) {
 	return NewProducerConfig(c, exchange, ProducerConfig{
 		publishInterval: 2 * time.Second,
-		publishRetries:  10,
 	})
 }
 
@@ -87,6 +85,10 @@ func (p *Producer) Close() {
 }
 
 func (p *Producer) setupTopology() error {
+	log.WithFields(log.Fields{
+		"type": "amqp",
+	}).Debug("Setting up topology...")
+
 	p.m.Lock()
 	defer p.m.Unlock()
 
@@ -120,12 +122,18 @@ func (p *Producer) setupTopology() error {
 		return err
 	}
 
+	log.WithFields(log.Fields{
+		"type": "amqp",
+	}).Debug("Topology ready")
+
 	return nil
 }
 
 func (p *Producer) handleReestablishedConnnection() {
+	reestablishChannel := p.conn.NotifyReestablish()
+
 	for !p.closed {
-		<-p.conn.NotifyReestablish()
+		<-reestablishChannel
 
 		err := p.setupTopology()
 
@@ -140,8 +148,7 @@ func (p *Producer) handleReestablishedConnnection() {
 
 func (p *Producer) drainInternalQueue() {
 	for m := range p.internalQueue {
-		// try to publish in N attempts.
-		for i := 1; i <= p.config.publishRetries; i++ {
+		for i := 0; !p.closed; i++ {
 			msg := amqplib.Publishing{
 				DeliveryMode: amqplib.Persistent,
 				Timestamp:    time.Now(),
@@ -153,54 +160,34 @@ func (p *Producer) drainInternalQueue() {
 				defer p.m.Unlock()
 
 				log.WithFields(log.Fields{
-					"type":        "amqp",
-					"attempt":     i,
-					"max_retries": p.config.publishRetries,
+					"type":    "amqp",
+					"attempt": i,
 				}).Debug("Publishing message to the exchange")
 
 				return p.channel.Publish(p.exchangeName, m.action, false, false, msg)
 			}()
 
 			if err != nil {
-				if i < p.config.publishRetries {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"error":       err,
-						"attempt":     i,
-						"max_retries": p.config.publishRetries,
-					}).Error("Error publishing message to the exchange. Retrying...")
+				log.WithFields(log.Fields{
+					"type":    "amqp",
+					"error":   err,
+					"attempt": i,
+				}).Error("Error publishing message to the exchange. Retrying...")
 
-					time.Sleep(p.config.publishInterval)
-					continue
-				} else {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"error":       err,
-						"attempt":     i,
-						"max_retries": p.config.publishRetries,
-					}).Error("Error publishing message to the exchange. Max retries reached, giving up...")
-				}
+				time.Sleep(p.config.publishInterval)
+				continue
 			}
 
 			select {
 			case <-p.ackChannel:
 				goto outer // 😈
 			case <-p.nackChannel:
-				if i < p.config.publishRetries {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"attempt":     i,
-						"max_retries": p.config.publishRetries,
-					}).Error("Error publishing message to the exchange. Retrying...")
+				log.WithFields(log.Fields{
+					"type":    "amqp",
+					"attempt": i,
+				}).Error("Error publishing message to the exchange. Retrying...")
 
-					time.Sleep(p.config.publishInterval)
-				} else {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"attempt":     i,
-						"max_retries": p.config.publishRetries,
-					}).Error("Error publishing message to the exchange. Max retries reached, giving up...")
-				}
+				time.Sleep(p.config.publishInterval)
 			}
 		}
 	outer:

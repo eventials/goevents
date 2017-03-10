@@ -232,7 +232,7 @@ func (c *Consumer) Consume() {
 		log.WithFields(log.Fields{
 			"type":  "amqp",
 			"queue": c.queueName,
-		}).Info("Setting up consumer channel...")
+		}).Debug("Setting up consumer channel...")
 
 		msgs, err := c.channel.Consume(
 			c.queueName, // queue
@@ -249,7 +249,7 @@ func (c *Consumer) Consume() {
 				"type":  "amqp",
 				"queue": c.queueName,
 				"error": err,
-			}).Info("Error setting up consumer...")
+			}).Error("Error setting up consumer...")
 
 			time.Sleep(c.config.consumeRetryInterval)
 
@@ -269,6 +269,6 @@ func (c *Consumer) Consume() {
 			"type":   "amqp",
 			"queue":  c.queueName,
 			"closed": c.closed,
-		}).Info("Consumption stopped")
+		}).Info("Consumption finished")
 	}
 }

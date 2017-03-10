@@ -24,15 +24,13 @@ type Connection struct {
 // ConnectionConfig to be used when creating a new connection.
 type ConnectionConfig struct {
 	reconnectInterval time.Duration
-	reconnectRetries  int
 }
 
 // NewConnection returns an AMQP Connection.
-// Uses a default ConnectionConfig with 2 second of reconnect interval and 10 retries.
+// Uses a default ConnectionConfig with 2 second of reconnect interval.
 func NewConnection(url string) (messaging.Connection, error) {
 	return NewConnectionConfig(url, ConnectionConfig{
 		reconnectInterval: 2 * time.Second,
-		reconnectRetries:  10,
 	})
 }
 
@@ -122,14 +120,13 @@ func (c *Connection) handleConnectionClose() {
 	for !c.closed {
 		c.WaitUntilConnectionCloses()
 
-		for i := 1; i <= c.config.reconnectRetries; i++ {
+		for i := 0; !c.closed; i++ {
 			err := c.reestablish()
 
 			if err == nil {
 				log.WithFields(log.Fields{
-					"type":        "amqp",
-					"attempt":     i,
-					"max_retries": c.config.reconnectRetries,
+					"type":    "amqp",
+					"attempt": i,
 				}).Info("Connection reestablished")
 
 				for _, c := range c.reestablishs {
@@ -138,23 +135,13 @@ func (c *Connection) handleConnectionClose() {
 
 				break
 			} else {
-				if i < c.config.reconnectRetries {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"error":       err,
-						"attempt":     i,
-						"max_retries": c.config.reconnectRetries,
-					}).Error("Error reestablishing connection. Retrying...")
+				log.WithFields(log.Fields{
+					"type":    "amqp",
+					"error":   err,
+					"attempt": i,
+				}).Error("Error reestablishing connection. Retrying...")
 
-					time.Sleep(c.config.reconnectInterval)
-				} else {
-					log.WithFields(log.Fields{
-						"type":        "amqp",
-						"error":       err,
-						"attempt":     i,
-						"max_retries": c.config.reconnectRetries,
-					}).Panic("Error reestablishing connection. Max retries reached, giving up...")
-				}
+				time.Sleep(c.config.reconnectInterval)
 			}
 		}
 	}
