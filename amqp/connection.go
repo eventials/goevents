@@ -30,14 +30,14 @@ type ConnectionConfig struct {
 // NewConnection returns an AMQP Connection.
 // Uses a default ConnectionConfig with 2 second of reconnect interval and 10 retries.
 func NewConnection(url string) (messaging.Connection, error) {
-	return NewConnectionWithConfig(url, ConnectionConfig{
+	return NewConnectionConfig(url, ConnectionConfig{
 		reconnectInterval: 2 * time.Second,
 		reconnectRetries:  10,
 	})
 }
 
-// NewConnectionWithConfig returns an AMQP Connection.
-func NewConnectionWithConfig(url string, config ConnectionConfig) (messaging.Connection, error) {
+// NewConnectionConfig returns an AMQP Connection.
+func NewConnectionConfig(url string, config ConnectionConfig) (messaging.Connection, error) {
 	conn, err := amqplib.Dial(url)
 
 	if err != nil {

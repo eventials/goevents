@@ -43,13 +43,13 @@ type ConsumerConfig struct {
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
-	return NewConsumerWithConfig(c, autoAck, exchange, queue, ConsumerConfig{
+	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		consumeRetryInterval: 2 * time.Second,
 	})
 }
 
-// NewConsumerWithConfig returns a new AMQP Consumer.
-func NewConsumerWithConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
+// NewConsumerConfig returns a new AMQP Consumer.
+func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
 	consumer := &Consumer{
 		config:       config,
 		conn:         c.(*Connection),

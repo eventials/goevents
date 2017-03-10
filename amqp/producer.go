@@ -44,14 +44,14 @@ type ProducerConfig struct {
 // NewProducer returns a new AMQP Producer.
 // Uses a default ProducerConfig with 2 second of publish interval and 10 publish retries.
 func NewProducer(c messaging.Connection, exchange string) (messaging.Producer, error) {
-	return NewProducerWithConfig(c, exchange, ProducerConfig{
+	return NewProducerConfig(c, exchange, ProducerConfig{
 		publishInterval: 2 * time.Second,
 		publishRetries:  10,
 	})
 }
 
-// NewProducerWithConfig returns a new AMQP Producer.
-func NewProducerWithConfig(c messaging.Connection, exchange string, config ProducerConfig) (messaging.Producer, error) {
+// NewProducerConfig returns a new AMQP Producer.
+func NewProducerConfig(c messaging.Connection, exchange string, config ProducerConfig) (messaging.Producer, error) {
 	producer := &Producer{
 		conn:          c.(*Connection),
 		config:        config,
