@@ -86,7 +86,8 @@ func (p *Producer) Close() {
 
 func (p *Producer) setupTopology() error {
 	log.WithFields(log.Fields{
-		"type": "amqp",
+		"type":    "goevents",
+		"subType": "producer",
 	}).Debug("Setting up topology...")
 
 	p.m.Lock()
@@ -123,7 +124,8 @@ func (p *Producer) setupTopology() error {
 	}
 
 	log.WithFields(log.Fields{
-		"type": "amqp",
+		"type":    "goevents",
+		"subType": "producer",
 	}).Debug("Topology ready")
 
 	return nil
@@ -160,7 +162,8 @@ func (p *Producer) drainInternalQueue() {
 				defer p.m.Unlock()
 
 				log.WithFields(log.Fields{
-					"type":    "amqp",
+					"type":    "goevents",
+					"subType": "producer",
 					"attempt": i,
 				}).Debug("Publishing message to the exchange")
 
@@ -169,7 +172,8 @@ func (p *Producer) drainInternalQueue() {
 
 			if err != nil {
 				log.WithFields(log.Fields{
-					"type":    "amqp",
+					"type":    "goevents",
+					"subType": "producer",
 					"error":   err,
 					"attempt": i,
 				}).Error("Error publishing message to the exchange. Retrying...")
@@ -183,7 +187,8 @@ func (p *Producer) drainInternalQueue() {
 				goto outer // 😈
 			case <-p.nackChannel:
 				log.WithFields(log.Fields{
-					"type":    "amqp",
+					"type":    "goevents",
+					"subType": "producer",
 					"attempt": i,
 				}).Error("Error publishing message to the exchange. Retrying...")
 

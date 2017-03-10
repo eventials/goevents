@@ -125,7 +125,8 @@ func (c *Connection) handleConnectionClose() {
 
 			if err == nil {
 				log.WithFields(log.Fields{
-					"type":    "amqp",
+					"type":    "goevents",
+					"subType": "connection",
 					"attempt": i,
 				}).Info("Connection reestablished")
 
@@ -136,7 +137,8 @@ func (c *Connection) handleConnectionClose() {
 				break
 			} else {
 				log.WithFields(log.Fields{
-					"type":    "amqp",
+					"type":    "goevents",
+					"subType": "connection",
 					"error":   err,
 					"attempt": i,
 				}).Error("Error reestablishing connection. Retrying...")

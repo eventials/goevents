@@ -123,8 +123,9 @@ func (c *Consumer) handleReestablishedConnnection() {
 
 		if err != nil {
 			log.WithFields(log.Fields{
-				"type":  "amqp",
-				"error": err,
+				"type":    "goevents",
+				"subType": "consumer",
+				"error":   err,
 			}).Error("Error setting up topology after reconnection")
 		}
 	}
@@ -230,8 +231,9 @@ func (c *Consumer) Unsubscribe(action string) error {
 func (c *Consumer) Consume() {
 	for !c.closed {
 		log.WithFields(log.Fields{
-			"type":  "amqp",
-			"queue": c.queueName,
+			"type":    "goevents",
+			"subType": "consumer",
+			"queue":   c.queueName,
 		}).Debug("Setting up consumer channel...")
 
 		msgs, err := c.channel.Consume(
@@ -246,9 +248,10 @@ func (c *Consumer) Consume() {
 
 		if err != nil {
 			log.WithFields(log.Fields{
-				"type":  "amqp",
-				"queue": c.queueName,
-				"error": err,
+				"type":    "goevents",
+				"subType": "consumer",
+				"queue":   c.queueName,
+				"error":   err,
 			}).Error("Error setting up consumer...")
 
 			time.Sleep(c.config.consumeRetryInterval)
@@ -257,8 +260,9 @@ func (c *Consumer) Consume() {
 		}
 
 		log.WithFields(log.Fields{
-			"type":  "amqp",
-			"queue": c.queueName,
+			"type":    "goevents",
+			"subType": "consumer",
+			"queue":   c.queueName,
 		}).Info("Consuming messages...")
 
 		for m := range msgs {
@@ -266,9 +270,10 @@ func (c *Consumer) Consume() {
 		}
 
 		log.WithFields(log.Fields{
-			"type":   "amqp",
-			"queue":  c.queueName,
-			"closed": c.closed,
+			"type":    "goevents",
+			"subType": "consumer",
+			"queue":   c.queueName,
+			"closed":  c.closed,
 		}).Info("Consumption finished")
 	}
 }
