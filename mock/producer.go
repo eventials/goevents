@@ -9,9 +9,14 @@ type Producer struct {
 }
 
 func (p *Producer) Publish(action string, data []byte) {
-	args := p.Called(action, data)
+	p.Called(action, data)
 }
 
 func (p *Producer) Close() {
-	args := p.Called()
+	p.Called()
+}
+
+func (p *Producer) NotifyClose() <-chan bool {
+	p.Called()
+	return make(chan bool)
 }
