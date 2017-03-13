@@ -8,4 +8,5 @@ RUN mkdir -p /go/src/github.com/eventials/goevents
 WORKDIR /go/src/github.com/eventials/goevents
 
 RUN go get github.com/streadway/amqp
+RUN go get github.com/Sirupsen/logrus
 RUN go get github.com/stretchr/testify

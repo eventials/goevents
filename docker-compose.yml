@@ -3,7 +3,7 @@ services:
   app:
     build: .
     working_dir: /go/src/github.com/eventials/goevents
-    command: dockerize -wait tcp://broker:5672 -timeout 60s go run example/consumer.go
+    command: dockerize -wait tcp://broker:5672 -timeout 60s go run examples/consumer/consumer.go
     links:
      - broker
     volumes:

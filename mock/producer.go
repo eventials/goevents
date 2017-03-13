@@ -8,7 +8,15 @@ type Producer struct {
 	mock.Mock
 }
 
-func (p *Producer) Publish(action string, data []byte) error {
-	args := p.Called(action, data)
-	return args.Error(1)
+func (p *Producer) Publish(action string, data []byte) {
+	p.Called(action, data)
+}
+
+func (p *Producer) Close() {
+	p.Called()
+}
+
+func (p *Producer) NotifyClose() <-chan bool {
+	p.Called()
+	return make(chan bool)
 }

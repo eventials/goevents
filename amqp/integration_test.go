@@ -39,13 +39,11 @@ func TestPublishConsume(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "events-exchange", "events-queue")
+	p, err := NewProducer(conn, "events-exchange")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("my_action_1", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("my_action_1", []byte(""))
 
 	select {
 	case <-func1:
@@ -88,13 +86,11 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
+	p, err := NewProducer(conn, "webhooks")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("webinar.state_changed", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("webinar.state_changed", []byte(""))
 
 	select {
 	case <-func1:
@@ -137,13 +133,11 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
+	p, err := NewProducer(conn, "webhooks")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("webinar.state_changed", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("webinar.state_changed", []byte(""))
 
 	select {
 	case <-func1:
@@ -186,13 +180,11 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
+	p, err := NewProducer(conn, "webhooks")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("webinar.state_changed", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("webinar.state_changed", []byte(""))
 
 	select {
 	case <-func1:
@@ -235,13 +227,11 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
+	p, err := NewProducer(conn, "webhooks")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("my_action", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("my_action", []byte(""))
 
 	select {
 	case <-called:
@@ -282,13 +272,11 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 
 	go c.Consume()
 
-	p, err := NewProducer(conn, "webhooks", "event_PublishConsumeer")
+	p, err := NewProducer(conn, "webhooks")
 
 	assert.Nil(t, err)
 
-	err = p.Publish("my_action", []byte(""))
-
-	assert.Nil(t, err)
+	p.Publish("my_action", []byte(""))
 
 	select {
 	case <-called:
