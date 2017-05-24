@@ -1,6 +1,7 @@
 package amqp
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,14 +28,14 @@ func TestPublishConsume(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("my_action_1", func(body []byte) bool {
+	c.Subscribe("my_action_1", func(body []byte) error {
 		func1 <- true
-		return true
+		return nil
 	})
 
-	c.Subscribe("my_action_2", func(body []byte) bool {
+	c.Subscribe("my_action_2", func(body []byte) error {
 		func2 <- true
-		return true
+		return nil
 	})
 
 	go c.Consume()
@@ -74,14 +75,14 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("webinar.*", func(body []byte) bool {
+	c.Subscribe("webinar.*", func(body []byte) error {
 		func1 <- true
-		return true
+		return nil
 	})
 
-	c.Subscribe("foobar.*", func(body []byte) bool {
+	c.Subscribe("foobar.*", func(body []byte) error {
 		func2 <- true
-		return true
+		return nil
 	})
 
 	go c.Consume()
@@ -121,14 +122,14 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("webinar.*", func(body []byte) bool {
+	c.Subscribe("webinar.*", func(body []byte) error {
 		func1 <- true
-		return true
+		return nil
 	})
 
-	c.Subscribe("webinar.state_changed", func(body []byte) bool {
+	c.Subscribe("webinar.state_changed", func(body []byte) error {
 		func2 <- true
-		return true
+		return nil
 	})
 
 	go c.Consume()
@@ -168,14 +169,14 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("webinar.state_changed", func(body []byte) bool {
+	c.Subscribe("webinar.state_changed", func(body []byte) error {
 		func1 <- true
-		return true
+		return nil
 	})
 
-	c.Subscribe("webinar.*", func(body []byte) bool {
+	c.Subscribe("webinar.*", func(body []byte) error {
 		func2 <- true
-		return true
+		return nil
 	})
 
 	go c.Consume()
@@ -215,15 +216,15 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("my_action", func(body []byte) bool {
+	c.SubscribeWithOptions("my_action", func(body []byte) error {
 		if calledOnce {
 			called <- true
-			return true
+			return nil
 		} else {
 			calledOnce = true
-			return false
+			return fmt.Errorf("Error.")
 		}
-	})
+	}, 1*time.Second, false, 5)
 
 	go c.Consume()
 
@@ -260,15 +261,15 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("my_action", func(body []byte) bool {
+	c.SubscribeWithOptions("my_action", func(body []byte) error {
 		if calledOnce {
 			called <- true
-			return true
+			return nil
 		} else {
 			calledOnce = true
 			panic("this is a panic!")
 		}
-	})
+	}, 1*time.Second, false, 5)
 
 	go c.Consume()
 

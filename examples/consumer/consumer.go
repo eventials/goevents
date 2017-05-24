@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
-	"fmt"
 	"github.com/eventials/goevents/amqp"
 )
 
@@ -23,15 +24,25 @@ func main() {
 		panic(err)
 	}
 
-	consumerA.Subscribe("object.eventA", func(body []byte) bool {
+	consumerA.Subscribe("object.eventA", func(body []byte) error {
 		fmt.Println("object.eventA:", string(body))
-		return true
+		return nil
 	})
 
-	consumerA.Subscribe("object.eventB", func(body []byte) bool {
+	consumerA.Subscribe("object.eventB", func(body []byte) error {
 		fmt.Println("object.eventB:", string(body))
-		return true
+		return nil
 	})
+
+	consumerA.SubscribeWithOptions("object.eventToRetryDelay", func(body []byte) error {
+		fmt.Println("object.eventToRetryDelay:", string(body))
+		return fmt.Errorf("Try again.")
+	}, 1*time.Second, true, 5)
+
+	consumerA.SubscribeWithOptions("object.eventToRetry", func(body []byte) error {
+		fmt.Println("object.eventToRetry:", string(body))
+		return fmt.Errorf("Try again.")
+	}, 1*time.Second, false, 10)
 
 	consumerB, err := conn.Consumer(false, "events-exchange", "events-queue-b")
 
@@ -39,14 +50,14 @@ func main() {
 		panic(err)
 	}
 
-	consumerB.Subscribe("object.eventC", func(body []byte) bool {
+	consumerB.Subscribe("object.eventC", func(body []byte) error {
 		fmt.Println("object.eventC:", string(body))
-		return true
+		return nil
 	})
 
-	consumerB.Subscribe("object.eventD", func(body []byte) bool {
+	consumerB.Subscribe("object.eventD", func(body []byte) error {
 		fmt.Println("object.eventD:", string(body))
-		return true
+		return nil
 	})
 
 	var wg sync.WaitGroup
