@@ -86,8 +86,8 @@ func (p *Producer) Close() {
 
 func (p *Producer) setupTopology() error {
 	log.WithFields(log.Fields{
-		"type":    "goevents",
-		"subType": "producer",
+		"type":     "goevents",
+		"sub_type": "producer",
 	}).Debug("Setting up topology...")
 
 	p.m.Lock()
@@ -124,9 +124,9 @@ func (p *Producer) setupTopology() error {
 	}
 
 	log.WithFields(log.Fields{
-		"type":    "goevents",
-		"subType": "producer",
-	}).Debug("Topology ready")
+		"type":     "goevents",
+		"sub_type": "producer",
+	}).Debug("Topology ready.")
 
 	return nil
 }
@@ -143,7 +143,7 @@ func (p *Producer) handleReestablishedConnnection() {
 			log.WithFields(log.Fields{
 				"type":  "amqp",
 				"error": err,
-			}).Error("Error setting up topology after reconnection")
+			}).Error("Error setting up topology after reconnection.")
 		}
 	}
 }
@@ -151,7 +151,10 @@ func (p *Producer) handleReestablishedConnnection() {
 func (p *Producer) drainInternalQueue() {
 	for m := range p.internalQueue {
 		for i := 0; !p.closed; i++ {
+			messageId, _ := NewUUIDv4()
+
 			msg := amqplib.Publishing{
+				MessageId:    messageId,
 				DeliveryMode: amqplib.Persistent,
 				Timestamp:    time.Now(),
 				Body:         m.data,
@@ -162,20 +165,20 @@ func (p *Producer) drainInternalQueue() {
 				defer p.m.Unlock()
 
 				log.WithFields(log.Fields{
-					"type":    "goevents",
-					"subType": "producer",
-					"attempt": i,
-				}).Debug("Publishing message to the exchange")
+					"type":     "goevents",
+					"sub_type": "producer",
+					"attempt":  i,
+				}).Debug("Publishing message to the exchange.")
 
 				return p.channel.Publish(p.exchangeName, m.action, false, false, msg)
 			}()
 
 			if err != nil {
 				log.WithFields(log.Fields{
-					"type":    "goevents",
-					"subType": "producer",
-					"error":   err,
-					"attempt": i,
+					"type":     "goevents",
+					"sub_type": "producer",
+					"error":    err,
+					"attempt":  i,
 				}).Error("Error publishing message to the exchange. Retrying...")
 
 				time.Sleep(p.config.publishInterval)
@@ -187,9 +190,9 @@ func (p *Producer) drainInternalQueue() {
 				goto outer // 😈
 			case <-p.nackChannel:
 				log.WithFields(log.Fields{
-					"type":    "goevents",
-					"subType": "producer",
-					"attempt": i,
+					"type":     "goevents",
+					"sub_type": "producer",
+					"attempt":  i,
 				}).Error("Error publishing message to the exchange. Retrying...")
 
 				time.Sleep(p.config.publishInterval)

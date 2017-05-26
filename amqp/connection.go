@@ -125,10 +125,10 @@ func (c *Connection) handleConnectionClose() {
 
 			if err == nil {
 				log.WithFields(log.Fields{
-					"type":    "goevents",
-					"subType": "connection",
-					"attempt": i,
-				}).Info("Connection reestablished")
+					"type":     "goevents",
+					"sub_type": "connection",
+					"attempt":  i,
+				}).Info("Connection reestablished.")
 
 				for _, c := range c.reestablishs {
 					c <- true
@@ -137,10 +137,10 @@ func (c *Connection) handleConnectionClose() {
 				break
 			} else {
 				log.WithFields(log.Fields{
-					"type":    "goevents",
-					"subType": "connection",
-					"error":   err,
-					"attempt": i,
+					"type":     "goevents",
+					"sub_type": "connection",
+					"error":    err,
+					"attempt":  i,
 				}).Error("Error reestablishing connection. Retrying...")
 
 				time.Sleep(c.config.reconnectInterval)

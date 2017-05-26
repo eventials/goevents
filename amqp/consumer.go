@@ -12,10 +12,25 @@ import (
 	amqplib "github.com/streadway/amqp"
 )
 
+const (
+	MaxInt32   = 1<<31 - 1
+	MaxRetries = MaxInt32
+)
+
+var (
+	logger = log.WithFields(log.Fields{
+		"type":     "goevents",
+		"sub_type": "consumer",
+	})
+)
+
 type handler struct {
-	action  string
-	handler messaging.EventHandler
-	re      *regexp.Regexp
+	action           string
+	fn               messaging.EventHandler
+	re               *regexp.Regexp
+	maxRetries       int32
+	retryDelay       time.Duration
+	delayProgression bool
 }
 
 type Consumer struct {
@@ -26,8 +41,9 @@ type Consumer struct {
 	autoAck  bool
 	handlers []handler
 
-	channel *amqplib.Channel
-	queue   *amqplib.Queue
+	channel    *amqplib.Channel
+	queue      *amqplib.Queue
+	retryQueue *amqplib.Queue
 
 	exchangeName string
 	queueName    string
@@ -106,11 +122,11 @@ func (c *Consumer) setupTopology() error {
 		nil,         // arguments
 	)
 
-	c.queue = &q
-
 	if err != nil {
 		return err
 	}
+
+	c.queue = &q
 
 	return nil
 }
@@ -122,53 +138,144 @@ func (c *Consumer) handleReestablishedConnnection() {
 		err := c.setupTopology()
 
 		if err != nil {
-			log.WithFields(log.Fields{
-				"type":    "goevents",
-				"subType": "consumer",
-				"error":   err,
-			}).Error("Error setting up topology after reconnection")
+			logger.WithFields(log.Fields{
+				"error": err,
+			}).Error("Error setting up topology after reconnection.")
 		}
 	}
 }
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
-	if fn, ok := c.getHandler(msg.RoutingKey); ok {
+	if h, ok := c.getHandler(msg.RoutingKey); ok {
+		delay, ok := getXRetryDelayHeader(msg)
+
+		if !ok {
+			delay = h.retryDelay
+		}
+
+		retryCount, _ := getXRetryCountHeader(msg)
+
 		defer func() {
 			if err := recover(); err != nil {
-				if !c.autoAck {
-					msg.Nack(false, true)
+				if h.maxRetries > 0 {
+					c.requeueMessage(msg, h, retryCount, delay)
+				} else {
+					logger.WithFields(log.Fields{
+						"error":      err,
+						"message_id": msg.MessageId,
+					}).Error("Failed to process event.")
+
+					if !c.autoAck {
+						msg.Ack(false)
+					}
 				}
 			}
 		}()
 
-		ok := fn(msg.Body)
+		death, ok := getXRetryDeathHeader(msg)
 
-		if !c.autoAck {
-			if ok {
-				msg.Ack(false)
-			} else {
-				msg.Nack(false, true)
+		if ok {
+			since := time.Since(death)
+
+			if since < delay {
+				time.Sleep(delay - since)
 			}
+		}
+
+		err := h.fn(msg.Body)
+
+		if err != nil {
+			if h.maxRetries > 0 {
+				if retryCount >= h.maxRetries {
+					logger.WithFields(log.Fields{
+						"max_retries": h.maxRetries,
+						"message_id":  msg.MessageId,
+					}).Error("Maximum retries reached. Giving up.")
+
+					if !c.autoAck {
+						msg.Ack(false)
+					}
+				} else {
+					logger.WithFields(log.Fields{
+						"error":      err,
+						"message_id": msg.MessageId,
+					}).Error("Failed to process event. Retrying...")
+
+					c.requeueMessage(msg, h, retryCount, delay)
+				}
+			} else {
+				logger.WithFields(log.Fields{
+					"error":      err,
+					"message_id": msg.MessageId,
+				}).Error("Failed to process event.")
+			}
+		} else if !c.autoAck {
+			msg.Ack(false)
 		}
 	} else {
 		// got a message from wrong exchange?
 		// ignore and don't requeue.
-		msg.Nack(false, false)
+		if !c.autoAck {
+			msg.Nack(false, false)
+		}
 	}
 }
 
-func (c *Consumer) getHandler(action string) (messaging.EventHandler, bool) {
+func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+	delayNs := delay.Nanoseconds()
+
+	if h.delayProgression {
+		delayNs *= 2
+	}
+
+	retryMsg := amqplib.Publishing{
+		Headers: amqplib.Table{
+			"x-retry-death": time.Now().UTC(),
+			"x-retry-count": retryCount + 1,
+			"x-retry-max":   h.maxRetries,
+			"x-retry-delay": delayNs,
+		},
+		DeliveryMode: amqplib.Persistent,
+		Timestamp:    time.Now(),
+		Body:         msg.Body,
+		MessageId:    msg.MessageId,
+	}
+
+	err := c.channel.Publish(msg.Exchange, msg.RoutingKey, false, false, retryMsg)
+
+	if err != nil {
+		logger.WithFields(log.Fields{
+			"error": err,
+		}).Error("Failed to retry.")
+
+		if !c.autoAck {
+			msg.Nack(false, true)
+		}
+	} else if !c.autoAck {
+		msg.Ack(false)
+	}
+}
+
+func (c *Consumer) getHandler(action string) (*handler, bool) {
 	for _, h := range c.handlers {
 		if h.re.MatchString(action) {
-			return h.handler, true
+			return &h, true
 		}
 	}
 
 	return nil, false
 }
 
-// Subscribe allow to subscribe an action handler.
+// Subscribe allows to subscribe an action handler.
+// By default it won't retry any failed event.
 func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) error {
+	return c.SubscribeWithOptions(action, handlerFn, time.Duration(0), false, 0)
+}
+
+// SubscribeWithOptions allows to subscribe an action handler with retry options.
+func (c *Consumer) SubscribeWithOptions(action string, handlerFn messaging.EventHandler,
+	retryDelay time.Duration, delayProgression bool, maxRetries int32) error {
+
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)
@@ -190,9 +297,12 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) er
 	}
 
 	c.handlers = append(c.handlers, handler{
-		action,
-		handlerFn,
-		re,
+		action:           action,
+		fn:               handlerFn,
+		re:               re,
+		maxRetries:       maxRetries,
+		retryDelay:       retryDelay,
+		delayProgression: delayProgression,
 	})
 
 	return nil
@@ -230,10 +340,8 @@ func (c *Consumer) Unsubscribe(action string) error {
 // Listen start to listen for new messages.
 func (c *Consumer) Consume() {
 	for !c.closed {
-		log.WithFields(log.Fields{
-			"type":    "goevents",
-			"subType": "consumer",
-			"queue":   c.queueName,
+		logger.WithFields(log.Fields{
+			"queue": c.queueName,
 		}).Debug("Setting up consumer channel...")
 
 		msgs, err := c.channel.Consume(
@@ -247,11 +355,9 @@ func (c *Consumer) Consume() {
 		)
 
 		if err != nil {
-			log.WithFields(log.Fields{
-				"type":    "goevents",
-				"subType": "consumer",
-				"queue":   c.queueName,
-				"error":   err,
+			logger.WithFields(log.Fields{
+				"queue": c.queueName,
+				"error": err,
 			}).Error("Error setting up consumer...")
 
 			time.Sleep(c.config.consumeRetryInterval)
@@ -259,21 +365,45 @@ func (c *Consumer) Consume() {
 			continue
 		}
 
-		log.WithFields(log.Fields{
-			"type":    "goevents",
-			"subType": "consumer",
-			"queue":   c.queueName,
+		logger.WithFields(log.Fields{
+			"queue": c.queueName,
 		}).Info("Consuming messages...")
 
 		for m := range msgs {
-			c.dispatch(m)
+			go c.dispatch(m)
 		}
 
-		log.WithFields(log.Fields{
-			"type":    "goevents",
-			"subType": "consumer",
-			"queue":   c.queueName,
-			"closed":  c.closed,
-		}).Info("Consumption finished")
+		logger.WithFields(log.Fields{
+			"queue":  c.queueName,
+			"closed": c.closed,
+		}).Info("Consumption finished.")
 	}
+}
+
+func getXRetryDeathHeader(msg amqplib.Delivery) (time.Time, bool) {
+	if d, ok := msg.Headers["x-retry-death"]; ok {
+		return d.(time.Time), true
+	}
+
+	return time.Time{}, false
+}
+
+func getXRetryCountHeader(msg amqplib.Delivery) (int32, bool) {
+	if c, ok := msg.Headers["x-retry-count"]; ok {
+		return c.(int32), true
+	}
+
+	return 0, false
+}
+
+func getXRetryDelayHeader(msg amqplib.Delivery) (time.Duration, bool) {
+	if d, ok := msg.Headers["x-retry-delay"]; ok {
+		f, ok := d.(int64)
+
+		if ok {
+			return time.Duration(f), true
+		}
+	}
+
+	return time.Duration(0), false
 }
