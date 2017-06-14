@@ -65,7 +65,7 @@ func TestPublishConsumeWildcardAction(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
+	c, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer")
 
 	assert.Nil(t, err)
 
@@ -112,7 +112,7 @@ func TestPublishConsumeWildcardActionOrderMatters1(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
+	c, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer")
 
 	assert.Nil(t, err)
 
@@ -159,7 +159,7 @@ func TestPublishConsumeWildcardActionOrderMatters2(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
+	c, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer")
 
 	assert.Nil(t, err)
 
@@ -206,7 +206,7 @@ func TestPublishConsumeRequeueIfFail(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
+	c, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer")
 
 	assert.Nil(t, err)
 
@@ -251,7 +251,7 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "event_PublishConsumeer")
+	c, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer")
 
 	assert.Nil(t, err)
 
@@ -283,5 +283,67 @@ func TestPublishConsumeRequeueIfPanic(t *testing.T) {
 	case <-called:
 	case <-time.After(5 * time.Second):
 		assert.Fail(t, "timed out")
+	}
+}
+
+func TestRequeueToTheSameQueue(t *testing.T) {
+	calledTimes1 := 0
+	calledTimes2 := 0
+
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
+
+	assert.Nil(t, err)
+
+	defer conn.Close()
+
+	c1, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer_1")
+	assert.Nil(t, err)
+
+	c2, err := NewConsumer(conn, false, "webhooks", "event_publish_consumer_2")
+	assert.Nil(t, err)
+
+	defer c1.Close()
+	defer c2.Close()
+
+	// Clean all messages if any...
+	consumer1 := c1.(*Consumer)
+	consumer1.channel.QueuePurge(consumer1.queueName, false)
+
+	consumer2 := c2.(*Consumer)
+	consumer2.channel.QueuePurge(consumer2.queueName, false)
+
+	c1.Subscribe("my_action", func(body []byte) error {
+		calledTimes2++
+		return nil
+	})
+
+	c2.SubscribeWithOptions("my_action", func(body []byte) error {
+		defer func() { calledTimes1++ }()
+
+		if calledTimes1 == 0 {
+			return fmt.Errorf("Error.")
+		} else {
+			return nil
+		}
+	}, 1*time.Second, false, 5)
+
+	go c1.Consume()
+	go c2.Consume()
+
+	p, err := NewProducer(conn, "webhooks")
+
+	assert.Nil(t, err)
+
+	p.Publish("my_action", []byte(""))
+
+	select {
+	case <-time.After(5 * time.Second):
+		if calledTimes1 != 2 {
+			assert.Fail(t, "Consumer 1 got wrong qtd of messages.")
+		}
+
+		if calledTimes2 != 1 {
+			assert.Fail(t, "Consumer 2 got wrong qtd of messages.")
+		}
 	}
 }

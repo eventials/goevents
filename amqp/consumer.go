@@ -146,7 +146,7 @@ func (c *Consumer) handleReestablishedConnnection() {
 }
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
-	if h, ok := c.getHandler(msg.RoutingKey); ok {
+	if h, ok := c.getHandler(msg); ok {
 		delay, ok := getXRetryDelayHeader(msg)
 
 		if !ok {
@@ -213,7 +213,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 			msg.Ack(false)
 		}
 	} else {
-		// got a message from wrong exchange?
+		// got wrong message?
 		// ignore and don't requeue.
 		if !c.autoAck {
 			msg.Nack(false, false)
@@ -234,14 +234,15 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount i
 			"x-retry-count": retryCount + 1,
 			"x-retry-max":   h.maxRetries,
 			"x-retry-delay": delayNs,
+			"x-action-key":  getAction(msg),
 		},
-		DeliveryMode: amqplib.Persistent,
 		Timestamp:    time.Now(),
+		DeliveryMode: msg.DeliveryMode,
 		Body:         msg.Body,
 		MessageId:    msg.MessageId,
 	}
 
-	err := c.channel.Publish(msg.Exchange, msg.RoutingKey, false, false, retryMsg)
+	err := c.channel.Publish("", c.queueName, false, false, retryMsg)
 
 	if err != nil {
 		logger.WithFields(log.Fields{
@@ -256,7 +257,9 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount i
 	}
 }
 
-func (c *Consumer) getHandler(action string) (*handler, bool) {
+func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
+	action := getAction(msg)
+
 	for _, h := range c.handlers {
 		if h.re.MatchString(action) {
 			return &h, true
@@ -377,6 +380,14 @@ func (c *Consumer) Consume() {
 			"queue":  c.queueName,
 			"closed": c.closed,
 		}).Info("Consumption finished.")
+	}
+}
+
+func getAction(msg amqplib.Delivery) string {
+	if ac, ok := msg.Headers["x-action-key"]; ok {
+		return ac.(string)
+	} else {
+		return msg.RoutingKey
 	}
 }
 
