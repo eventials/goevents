@@ -2,7 +2,6 @@ package amqp
 
 import (
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +37,6 @@ type Consumer struct {
 	config ConsumerConfig
 
 	m sync.Mutex
-	s Semaphore
 
 	conn     *Connection
 	autoAck  bool
@@ -57,7 +55,7 @@ type Consumer struct {
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
 	ConsumeRetryInterval time.Duration
-	MaxWorkers           int
+	PrefetchCount        int
 }
 
 // NewConsumer returns a new AMQP Consumer.
@@ -65,7 +63,7 @@ type ConsumerConfig struct {
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
-		MaxWorkers:           runtime.NumCPU(),
+		PrefetchCount:        0,
 	})
 }
 
@@ -73,7 +71,6 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
 	consumer := &Consumer{
 		config:       config,
-		s:            NewSemaphore(config.MaxWorkers),
 		conn:         c.(*Connection),
 		autoAck:      autoAck,
 		handlers:     make([]handler, 0),
@@ -100,6 +97,12 @@ func (c *Consumer) setupTopology() error {
 	var err error
 
 	c.channel, err = c.conn.OpenChannel()
+
+	if err != nil {
+		return err
+	}
+
+	err = c.channel.Qos(c.config.PrefetchCount, 0, true)
 
 	if err != nil {
 		return err
@@ -379,12 +382,7 @@ func (c *Consumer) Consume() {
 		}).Info("Consuming messages...")
 
 		for m := range msgs {
-			c.s.Acquire()
-
-			go func() {
-				c.dispatch(m)
-				c.s.Release()
-			}()
+			go c.dispatch(m)
 		}
 
 		logger.WithFields(log.Fields{

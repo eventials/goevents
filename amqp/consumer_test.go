@@ -458,7 +458,7 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	}
 }
 
-func TestConsumeWorkers(t *testing.T) {
+func TestConsumePrefetch(t *testing.T) {
 	timesCalled := 0
 	wait := make(chan bool)
 
@@ -468,8 +468,8 @@ func TestConsumeWorkers(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumerConfig(conn, false, "webhooks", "TestConsumeWorkers", ConsumerConfig{
-		MaxWorkers:           5,
+	c, err := NewConsumerConfig(conn, false, "webhooks", "TestConsumePrefetch", ConsumerConfig{
+		PrefetchCount:        5,
 		ConsumeRetryInterval: 15 * time.Second,
 	})
 
