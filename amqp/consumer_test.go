@@ -457,3 +457,65 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 		assert.Equal(t, 4, timesCalled, "Consumer got wrong quantity of messages.")
 	}
 }
+
+func TestConsumeWorkers(t *testing.T) {
+	timesCalled := 0
+	wait := make(chan bool)
+
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
+
+	assert.Nil(t, err)
+
+	defer conn.Close()
+
+	c, err := NewConsumerConfig(conn, false, "webhooks", "TestConsumeWorkers", ConsumerConfig{
+		MaxWorkers:           5,
+		ConsumeRetryInterval: 15 * time.Second,
+	})
+
+	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
+
+	c.Subscribe("my_action", func(body []byte) error {
+		timesCalled++
+		<-wait
+		return nil
+	})
+
+	go c.Consume()
+
+	p, err := NewProducer(conn, "webhooks")
+
+	assert.Nil(t, err)
+
+	for i := 0; i < 10; i++ {
+		p.Publish("my_action", []byte(""))
+	}
+
+	<-time.After(100 * time.Millisecond)
+	assert.Equal(t, 5, timesCalled, "Consumer got wrong quantity of messages.")
+
+	// release one
+	wait <- true
+
+	<-time.After(100 * time.Millisecond)
+	assert.Equal(t, 6, timesCalled, "Consumer got wrong quantity of messages.")
+
+	// release all
+	for i := 0; i < 5; i++ {
+		wait <- true
+	}
+
+	<-time.After(100 * time.Millisecond)
+	assert.Equal(t, 10, timesCalled, "Consumer got wrong quantity of messages.")
+
+	// release all
+	for i := 0; i < 4; i++ {
+		wait <- true
+	}
+}

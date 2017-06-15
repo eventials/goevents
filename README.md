@@ -9,7 +9,7 @@ Go messaging library
 An application produces events based on actions.
 Another application consume these events and maybe create new events.
 
-*Scenario:* If an application produces an events "payment-received", another application may want to delivery the product to the buyer.
+*Scenario:* If an application produces an event "payment.received", another application may want to delivery the product to the buyer.
 
 ## Supported Transport
 

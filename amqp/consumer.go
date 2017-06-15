@@ -2,6 +2,7 @@ package amqp
 
 import (
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -35,7 +36,9 @@ type handler struct {
 
 type Consumer struct {
 	config ConsumerConfig
-	m      sync.Mutex
+
+	m sync.Mutex
+	s Semaphore
 
 	conn     *Connection
 	autoAck  bool
@@ -53,14 +56,16 @@ type Consumer struct {
 
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
-	consumeRetryInterval time.Duration
+	ConsumeRetryInterval time.Duration
+	MaxWorkers           int
 }
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
-		consumeRetryInterval: 2 * time.Second,
+		ConsumeRetryInterval: 2 * time.Second,
+		MaxWorkers:           runtime.NumCPU(),
 	})
 }
 
@@ -68,6 +73,7 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
 	consumer := &Consumer{
 		config:       config,
+		s:            NewSemaphore(config.MaxWorkers),
 		conn:         c.(*Connection),
 		autoAck:      autoAck,
 		handlers:     make([]handler, 0),
@@ -363,7 +369,7 @@ func (c *Consumer) Consume() {
 				"error": err,
 			}).Error("Error setting up consumer...")
 
-			time.Sleep(c.config.consumeRetryInterval)
+			time.Sleep(c.config.ConsumeRetryInterval)
 
 			continue
 		}
@@ -373,7 +379,12 @@ func (c *Consumer) Consume() {
 		}).Info("Consuming messages...")
 
 		for m := range msgs {
-			go c.dispatch(m)
+			c.s.Acquire()
+
+			go func() {
+				c.dispatch(m)
+				c.s.Release()
+			}()
 		}
 
 		logger.WithFields(log.Fields{
