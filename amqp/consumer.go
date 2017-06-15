@@ -2,6 +2,7 @@ package amqp
 
 import (
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -35,7 +36,9 @@ type handler struct {
 
 type Consumer struct {
 	config ConsumerConfig
-	m      sync.Mutex
+
+	m sync.Mutex
+	s Semaphore
 
 	conn     *Connection
 	autoAck  bool
@@ -53,14 +56,16 @@ type Consumer struct {
 
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
-	consumeRetryInterval time.Duration
+	ConsumeRetryInterval time.Duration
+	MaxWorkers           int
 }
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
-		consumeRetryInterval: 2 * time.Second,
+		ConsumeRetryInterval: 2 * time.Second,
+		MaxWorkers:           runtime.NumCPU(),
 	})
 }
 
@@ -68,6 +73,7 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
 	consumer := &Consumer{
 		config:       config,
+		s:            NewSemaphore(config.MaxWorkers),
 		conn:         c.(*Connection),
 		autoAck:      autoAck,
 		handlers:     make([]handler, 0),
@@ -146,7 +152,7 @@ func (c *Consumer) handleReestablishedConnnection() {
 }
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
-	if h, ok := c.getHandler(msg.RoutingKey); ok {
+	if h, ok := c.getHandler(msg); ok {
 		delay, ok := getXRetryDelayHeader(msg)
 
 		if !ok {
@@ -213,7 +219,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 			msg.Ack(false)
 		}
 	} else {
-		// got a message from wrong exchange?
+		// got wrong message?
 		// ignore and don't requeue.
 		if !c.autoAck {
 			msg.Nack(false, false)
@@ -234,14 +240,15 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount i
 			"x-retry-count": retryCount + 1,
 			"x-retry-max":   h.maxRetries,
 			"x-retry-delay": delayNs,
+			"x-action-key":  getAction(msg),
 		},
-		DeliveryMode: amqplib.Persistent,
 		Timestamp:    time.Now(),
+		DeliveryMode: msg.DeliveryMode,
 		Body:         msg.Body,
 		MessageId:    msg.MessageId,
 	}
 
-	err := c.channel.Publish(msg.Exchange, msg.RoutingKey, false, false, retryMsg)
+	err := c.channel.Publish("", c.queueName, false, false, retryMsg)
 
 	if err != nil {
 		logger.WithFields(log.Fields{
@@ -256,7 +263,9 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount i
 	}
 }
 
-func (c *Consumer) getHandler(action string) (*handler, bool) {
+func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
+	action := getAction(msg)
+
 	for _, h := range c.handlers {
 		if h.re.MatchString(action) {
 			return &h, true
@@ -360,7 +369,7 @@ func (c *Consumer) Consume() {
 				"error": err,
 			}).Error("Error setting up consumer...")
 
-			time.Sleep(c.config.consumeRetryInterval)
+			time.Sleep(c.config.ConsumeRetryInterval)
 
 			continue
 		}
@@ -370,13 +379,26 @@ func (c *Consumer) Consume() {
 		}).Info("Consuming messages...")
 
 		for m := range msgs {
-			go c.dispatch(m)
+			c.s.Acquire()
+
+			go func() {
+				c.dispatch(m)
+				c.s.Release()
+			}()
 		}
 
 		logger.WithFields(log.Fields{
 			"queue":  c.queueName,
 			"closed": c.closed,
 		}).Info("Consumption finished.")
+	}
+}
+
+func getAction(msg amqplib.Delivery) string {
+	if ac, ok := msg.Headers["x-action-key"]; ok {
+		return ac.(string)
+	} else {
+		return msg.RoutingKey
 	}
 }
 
