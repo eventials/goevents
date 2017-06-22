@@ -18,7 +18,11 @@ func main() {
 		panic(err)
 	}
 
-	consumerA, err := conn.Consumer(false, "events-exchange", "events-queue-a")
+	consumerA, err := amqp.NewConsumerConfig(conn, false, "events-exchange", "events-queue-a", amqp.ConsumerConfig{
+		ConsumeRetryInterval:      2 * time.Second,
+		PrefetchCount:             1,
+		RetryTimeoutBeforeRequeue: 60 * time.Second,
+	})
 
 	if err != nil {
 		panic(err)
@@ -37,7 +41,7 @@ func main() {
 	consumerA.SubscribeWithOptions("object.eventToRetryDelay", func(body []byte) error {
 		fmt.Println("object.eventToRetryDelay:", string(body))
 		return fmt.Errorf("Try again.")
-	}, 1*time.Second, true, 5)
+	}, 10*time.Second, true, 30)
 
 	consumerA.SubscribeWithOptions("object.eventToRetry", func(body []byte) error {
 		fmt.Println("object.eventToRetry:", string(body))
