@@ -54,16 +54,18 @@ type Consumer struct {
 
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
-	ConsumeRetryInterval time.Duration
-	PrefetchCount        int
+	ConsumeRetryInterval      time.Duration
+	PrefetchCount             int
+	RetryTimeoutBeforeRequeue time.Duration
 }
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
-		ConsumeRetryInterval: 2 * time.Second,
-		PrefetchCount:        0,
+		ConsumeRetryInterval:      2 * time.Second,
+		PrefetchCount:             0,
+		RetryTimeoutBeforeRequeue: 30 * time.Second,
 	})
 }
 
@@ -156,9 +158,9 @@ func (c *Consumer) handleReestablishedConnnection() {
 
 func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	if h, ok := c.getHandler(msg); ok {
-		delay, ok := getXRetryDelayHeader(msg)
+		delay, isRetry := getXRetryDelayHeader(msg)
 
-		if !ok {
+		if !isRetry {
 			delay = h.retryDelay
 		}
 
@@ -167,7 +169,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 		defer func() {
 			if err := recover(); err != nil {
 				if h.maxRetries > 0 {
-					c.requeueMessage(msg, h, retryCount, delay)
+					c.retryMessage(msg, h, retryCount, delay)
 				} else {
 					logger.WithFields(log.Fields{
 						"error":      err,
@@ -181,46 +183,42 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 			}
 		}()
 
-		death, ok := getXRetryDeathHeader(msg)
+		death, isRetry := getXRetryDeathHeader(msg)
 
-		if ok {
+		if isRetry {
 			since := time.Since(death)
+			tts := delay - since
+
+			logger.WithFields(log.Fields{
+				"max_retries":     h.maxRetries,
+				"message_id":      msg.MessageId,
+				"retry_in_millis": tts,
+				"retry_timeout":   c.config.RetryTimeoutBeforeRequeue,
+			}).Info("Retrying message")
 
 			if since < delay {
-				time.Sleep(delay - since)
-			}
-		}
-
-		err := h.fn(msg.Body)
-
-		if err != nil {
-			if h.maxRetries > 0 {
-				if retryCount >= h.maxRetries {
+				select {
+				case <-time.After(c.config.RetryTimeoutBeforeRequeue):
 					logger.WithFields(log.Fields{
 						"max_retries": h.maxRetries,
 						"message_id":  msg.MessageId,
-					}).Error("Maximum retries reached. Giving up.")
+					}).Info("Requeue message")
 
-					if !c.autoAck {
-						msg.Ack(false)
-					}
-				} else {
+					c.requeueMessage(msg)
+				case <-time.After(tts):
 					logger.WithFields(log.Fields{
-						"error":      err,
-						"message_id": msg.MessageId,
-					}).Error("Failed to process event. Retrying...")
+						"max_retries": h.maxRetries,
+						"message_id":  msg.MessageId,
+					}).Info("dispathing retry message")
 
-					c.requeueMessage(msg, h, retryCount, delay)
+					c.doDispatch(msg, h, retryCount, delay)
 				}
-			} else {
-				logger.WithFields(log.Fields{
-					"error":      err,
-					"message_id": msg.MessageId,
-				}).Error("Failed to process event.")
+
+				return
 			}
-		} else if !c.autoAck {
-			msg.Ack(false)
 		}
+
+		c.doDispatch(msg, h, retryCount, delay)
 	} else {
 		// got wrong message?
 		// ignore and don't requeue.
@@ -230,7 +228,40 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	}
 }
 
-func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+	err := h.fn(msg.Body)
+
+	if err != nil {
+		if h.maxRetries > 0 {
+			if retryCount >= h.maxRetries {
+				logger.WithFields(log.Fields{
+					"max_retries": h.maxRetries,
+					"message_id":  msg.MessageId,
+				}).Error("Maximum retries reached. Giving up.")
+
+				if !c.autoAck {
+					msg.Ack(false)
+				}
+			} else {
+				logger.WithFields(log.Fields{
+					"error":      err,
+					"message_id": msg.MessageId,
+				}).Error("Failed to process event. Retrying...")
+
+				c.retryMessage(msg, h, retryCount, delay)
+			}
+		} else {
+			logger.WithFields(log.Fields{
+				"error":      err,
+				"message_id": msg.MessageId,
+			}).Error("Failed to process event.")
+		}
+	} else if !c.autoAck {
+		msg.Ack(false)
+	}
+}
+
+func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	delayNs := delay.Nanoseconds()
 
 	if h.delayProgression {
@@ -257,6 +288,31 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery, h *handler, retryCount i
 		logger.WithFields(log.Fields{
 			"error": err,
 		}).Error("Failed to retry.")
+
+		if !c.autoAck {
+			msg.Nack(false, true)
+		}
+	} else if !c.autoAck {
+		msg.Ack(false)
+	}
+}
+
+func (c *Consumer) requeueMessage(msg amqplib.Delivery) {
+	retryMsg := amqplib.Publishing{
+		Headers:      msg.Headers,
+		Timestamp:    msg.Timestamp,
+		DeliveryMode: msg.DeliveryMode,
+		Body:         msg.Body,
+		MessageId:    msg.MessageId,
+	}
+
+	err := c.channel.Publish("", c.queueName, false, false, retryMsg)
+
+	if err != nil {
+		logger.WithFields(log.Fields{
+			"messageId": msg.MessageId,
+			"error":     err,
+		}).Error("Failed to requeue.")
 
 		if !c.autoAck {
 			msg.Nack(false, true)

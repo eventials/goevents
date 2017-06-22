@@ -196,7 +196,7 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 	}
 }
 
-func TestDontRequeueMessageIfFailsToProcess(t *testing.T) {
+func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 	timesCalled := 0
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
@@ -205,7 +205,7 @@ func TestDontRequeueMessageIfFailsToProcess(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestDontRequeueMessageIfFailsToProcess")
+	c, err := NewConsumer(conn, false, "webhooks", "TestDontRetryMessageIfFailsToProcess")
 
 	assert.Nil(t, err)
 
@@ -239,7 +239,7 @@ func TestDontRequeueMessageIfFailsToProcess(t *testing.T) {
 	}
 }
 
-func TestRequeueMessageIfFailsToProcess(t *testing.T) {
+func TestRetryMessageIfFailsToProcess(t *testing.T) {
 	timesCalled := 0
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
@@ -248,7 +248,7 @@ func TestRequeueMessageIfFailsToProcess(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestRequeueMessageIfFailsToProcess")
+	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfFailsToProcess")
 
 	assert.Nil(t, err)
 
@@ -282,7 +282,7 @@ func TestRequeueMessageIfFailsToProcess(t *testing.T) {
 	}
 }
 
-func TestRequeueMessageIfPanicsToProcess(t *testing.T) {
+func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 	timesCalled := 0
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
@@ -291,7 +291,7 @@ func TestRequeueMessageIfPanicsToProcess(t *testing.T) {
 
 	defer conn.Close()
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestRequeueMessageIfPanicsToProcess")
+	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfPanicsToProcess")
 
 	assert.Nil(t, err)
 
@@ -325,7 +325,7 @@ func TestRequeueMessageIfPanicsToProcess(t *testing.T) {
 	}
 }
 
-func TestRequeueMessageToTheSameQueue(t *testing.T) {
+func TestRetryMessageToTheSameQueue(t *testing.T) {
 	timesCalled1 := 0
 	timesCalled2 := 0
 
@@ -335,10 +335,10 @@ func TestRequeueMessageToTheSameQueue(t *testing.T) {
 
 	defer conn.Close()
 
-	c1, err := NewConsumer(conn, false, "webhooks", "TestRequeueMessageToTheSameQueue_1")
+	c1, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageToTheSameQueue_1")
 	assert.Nil(t, err)
 
-	c2, err := NewConsumer(conn, false, "webhooks", "TestRequeueMessageToTheSameQueue_2")
+	c2, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageToTheSameQueue_2")
 	assert.Nil(t, err)
 
 	defer c1.Close()
@@ -438,7 +438,7 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	// It runs once and get an error, it will try five times more until it stops.
+	// It runs once and get an error, it will try three times more until it stops.
 	c.SubscribeWithOptions("my_action", func(body []byte) error {
 		defer func() { timesCalled++ }()
 		return fmt.Errorf("Error.")
@@ -455,6 +455,100 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	select {
 	case <-time.After(1 * time.Second):
 		assert.Equal(t, 4, timesCalled, "Consumer got wrong quantity of messages.")
+	}
+}
+
+func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
+	timesCalled := 0
+
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
+
+	assert.Nil(t, err)
+
+	defer conn.Close()
+
+	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetriesWhenDelayed")
+	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
+
+	// It runs once and get an error, it will try three times more until it stops.
+	c.SubscribeWithOptions("my_action", func(body []byte) error {
+		defer func() { timesCalled++ }()
+		return fmt.Errorf("Error.")
+	}, 100*time.Millisecond, true, 5)
+
+	go c.Consume()
+
+	p, err := NewProducer(conn, "webhooks")
+
+	assert.Nil(t, err)
+
+	p.Publish("my_action", []byte(""))
+
+	select {
+	case <-time.After(1 * time.Second):
+		assert.True(t, timesCalled == 4 || timesCalled == 5, "Consumer got wrong quantity of messages.")
+	}
+}
+
+func TestActionRetryTimeout(t *testing.T) {
+	myActionTimesCalled := 0
+	myAction2TimesCalled := 0
+
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
+
+	assert.Nil(t, err)
+
+	defer conn.Close()
+
+	c, err := NewConsumerConfig(conn, false, "webhooks", "TestActionRetryTimeout", ConsumerConfig{
+		ConsumeRetryInterval:      2 * time.Second,
+		PrefetchCount:             1,
+		RetryTimeoutBeforeRequeue: 650 * time.Millisecond,
+	})
+
+	assert.Nil(t, err)
+
+	defer c.Close()
+
+	// Clean all messages if any...
+	consumer := c.(*Consumer)
+	consumer.channel.QueuePurge(consumer.queueName, false)
+
+	c.SubscribeWithOptions("test1", func(body []byte) error {
+		defer func() {
+			myActionTimesCalled++
+		}()
+		return fmt.Errorf("Error.")
+	}, 300*time.Millisecond, true, 4)
+
+	c.Subscribe("test2", func(body []byte) error {
+		defer func() {
+			myAction2TimesCalled++
+		}()
+		return nil
+	})
+
+	go c.Consume()
+
+	p, err := NewProducer(conn, "webhooks")
+
+	assert.Nil(t, err)
+
+	p.Publish("test1", []byte(""))
+
+	time.Sleep(200 * time.Millisecond)
+	p.Publish("test2", []byte(""))
+
+	select {
+	case <-time.After(1 * time.Second):
+		assert.Equal(t, 3, myActionTimesCalled, "Consumer got wrong quantity of messages.")
+		assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
 	}
 }
 
