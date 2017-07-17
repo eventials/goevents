@@ -8,7 +8,7 @@ import (
 
 	"github.com/eventials/goevents/messaging"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
 )
 
