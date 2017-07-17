@@ -7,7 +7,7 @@ go:
 install:
   - go get github.com/streadway/amqp
   - go get github.com/stretchr/testify
-  - go get github.com/Sirupsen/logrus
+  - go get github.com/sirupsen/logrus
 services:
   - rabbitmq
 addons:
