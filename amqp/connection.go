@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
 
 	"github.com/eventials/goevents/messaging"
