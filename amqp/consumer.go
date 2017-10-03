@@ -194,7 +194,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 				"message_id":      msg.MessageId,
 				"retry_in_millis": tts,
 				"retry_timeout":   c.config.RetryTimeoutBeforeRequeue,
-			}).Info("Retrying message")
+			}).Info("Retrying message.")
 
 			if since < delay {
 				select {
@@ -202,14 +202,14 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 					logger.WithFields(log.Fields{
 						"max_retries": h.maxRetries,
 						"message_id":  msg.MessageId,
-					}).Info("Requeue message")
+					}).Info("Requeue message.")
 
 					c.requeueMessage(msg)
 				case <-time.After(tts):
 					logger.WithFields(log.Fields{
 						"max_retries": h.maxRetries,
 						"message_id":  msg.MessageId,
-					}).Info("dispathing retry message")
+					}).Info("Dispathing retry message.")
 
 					c.doDispatch(msg, h, retryCount, delay)
 				}
@@ -407,6 +407,12 @@ func (c *Consumer) Unsubscribe(action string) error {
 
 // Listen start to listen for new messages.
 func (c *Consumer) Consume() {
+	logger.Info("Registered handlers:")
+
+	for _, handler := range c.handlers {
+		logger.Infof("  %s", handler.action)
+	}
+
 	for !c.closed {
 		logger.WithFields(log.Fields{
 			"queue": c.queueName,
