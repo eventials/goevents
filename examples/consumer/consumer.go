@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/eventials/goevents/amqp"
+	"github.com/eventials/goevents/messaging"
 )
 
 func main() {
@@ -38,15 +39,27 @@ func main() {
 		return nil
 	})
 
-	consumerA.SubscribeWithOptions("object.eventToRetryDelay", func(body []byte) error {
-		fmt.Println("object.eventToRetryDelay:", string(body))
-		return fmt.Errorf("Try again.")
-	}, 10*time.Second, true, 30)
+	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "object.eventToRetryDelay",
+		Handler: func(body []byte) error {
+			fmt.Println("object.eventToRetryDelay:", string(body))
+			return fmt.Errorf("Try again.")
+		},
+		RetryDelay:   10 * time.Second,
+		DelayedRetry: true,
+		MaxRetries:   30,
+	})
 
-	consumerA.SubscribeWithOptions("object.eventToRetry", func(body []byte) error {
-		fmt.Println("object.eventToRetry:", string(body))
-		return fmt.Errorf("Try again.")
-	}, 1*time.Second, false, 10)
+	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "object.eventToRetry",
+		Handler: func(body []byte) error {
+			fmt.Println("object.eventToRetry:", string(body))
+			return fmt.Errorf("Try again.")
+		},
+		RetryDelay:   1 * time.Second,
+		DelayedRetry: false,
+		MaxRetries:   10,
+	})
 
 	consumerB, err := conn.Consumer(false, "events-exchange", "events-queue-b")
 

@@ -113,7 +113,6 @@ func (c *Connection) reestablish() error {
 	c.connection = conn
 
 	return err
-
 }
 
 func (c *Connection) handleConnectionClose() {

@@ -336,16 +336,21 @@ func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
 
 // Subscribe allows to subscribe an action handler.
 // By default it won't retry any failed event.
-func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler) error {
-	return c.SubscribeWithOptions(action, handlerFn, time.Duration(0), false, 0)
+func (c *Consumer) Subscribe(action string, handler messaging.EventHandler) error {
+	return c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action:       action,
+		Handler:      handler,
+		RetryDelay:   time.Duration(0),
+		DelayedRetry: false,
+		MaxRetries:   0,
+	})
 }
 
 // SubscribeWithOptions allows to subscribe an action handler with retry options.
-func (c *Consumer) SubscribeWithOptions(action string, handlerFn messaging.EventHandler,
-	retryDelay time.Duration, delayProgression bool, maxRetries int32) error {
+func (c *Consumer) SubscribeWithOptions(options messaging.SubscribeOptions) error {
 
 	// TODO: Replace # pattern too.
-	pattern := strings.Replace(action, "*", "(.*)", 0)
+	pattern := strings.Replace(options.Action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)
 
 	if err != nil {
@@ -354,7 +359,7 @@ func (c *Consumer) SubscribeWithOptions(action string, handlerFn messaging.Event
 
 	err = c.channel.QueueBind(
 		c.queueName,    // queue name
-		action,         // routing key
+		options.Action, // routing key
 		c.exchangeName, // exchange
 		false,          // no-wait
 		nil,            // arguments
@@ -365,12 +370,12 @@ func (c *Consumer) SubscribeWithOptions(action string, handlerFn messaging.Event
 	}
 
 	c.handlers = append(c.handlers, handler{
-		action:           action,
-		fn:               handlerFn,
+		action:           options.Action,
+		fn:               options.Handler,
 		re:               re,
-		maxRetries:       maxRetries,
-		retryDelay:       retryDelay,
-		delayProgression: delayProgression,
+		maxRetries:       options.MaxRetries,
+		retryDelay:       options.RetryDelay,
+		delayProgression: options.DelayedRetry,
 	})
 
 	return nil

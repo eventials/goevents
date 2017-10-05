@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eventials/goevents/messaging"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -258,15 +259,21 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled++ }()
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled++ }()
 
-		if timesCalled == 0 {
-			return fmt.Errorf("Error")
-		}
+			if timesCalled == 0 {
+				return fmt.Errorf("Error")
+			}
 
-		return nil
-	}, 100*time.Millisecond, false, 5)
+			return nil
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: false,
+		MaxRetries:   5,
+	})
 
 	go c.Consume()
 
@@ -301,15 +308,21 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled++ }()
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled++ }()
 
-		if timesCalled == 0 {
-			panic("this is a panic!")
-		}
+			if timesCalled == 0 {
+				panic("this is a panic!")
+			}
 
-		return nil
-	}, 100*time.Millisecond, false, 5)
+			return nil
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: false,
+		MaxRetries:   5,
+	})
 
 	go c.Consume()
 
@@ -356,15 +369,21 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 		return nil
 	})
 
-	c2.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled1++ }()
+	c2.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled1++ }()
 
-		if timesCalled1 == 0 {
-			return fmt.Errorf("Error.")
-		} else {
-			return nil
-		}
-	}, 100*time.Millisecond, false, 5)
+			if timesCalled1 == 0 {
+				return fmt.Errorf("Error.")
+			} else {
+				return nil
+			}
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: false,
+		MaxRetries:   5,
+	})
 
 	go c1.Consume()
 	go c2.Consume()
@@ -401,10 +420,16 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try five times more until it stops.
-	c.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
-	}, 100*time.Millisecond, false, 5)
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled++ }()
+			return fmt.Errorf("Error.")
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: false,
+		MaxRetries:   5,
+	})
 
 	go c.Consume()
 
@@ -439,10 +464,16 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
-	c.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
-	}, 100*time.Millisecond, true, 3)
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled++ }()
+			return fmt.Errorf("Error.")
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: true,
+		MaxRetries:   3,
+	})
 
 	go c.Consume()
 
@@ -477,10 +508,16 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
-	c.SubscribeWithOptions("my_action", func(body []byte) error {
-		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
-	}, 100*time.Millisecond, true, 5)
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "my_action",
+		Handler: func(body []byte) error {
+			defer func() { timesCalled++ }()
+			return fmt.Errorf("Error.")
+		},
+		RetryDelay:   100 * time.Millisecond,
+		DelayedRetry: true,
+		MaxRetries:   5,
+	})
 
 	go c.Consume()
 
@@ -520,12 +557,18 @@ func TestActionRetryTimeout(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions("test1", func(body []byte) error {
-		defer func() {
-			myActionTimesCalled++
-		}()
-		return fmt.Errorf("Error.")
-	}, 300*time.Millisecond, true, 4)
+	c.SubscribeWithOptions(messaging.SubscribeOptions{
+		Action: "test1",
+		Handler: func(body []byte) error {
+			defer func() {
+				myActionTimesCalled++
+			}()
+			return fmt.Errorf("Error.")
+		},
+		RetryDelay:   300 * time.Millisecond,
+		DelayedRetry: true,
+		MaxRetries:   4,
+	})
 
 	c.Subscribe("test2", func(body []byte) error {
 		defer func() {
