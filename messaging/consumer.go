@@ -1,7 +1,6 @@
 package messaging
 
 import (
-	"context"
 	"time"
 )
 
@@ -19,12 +18,6 @@ type SubscribeOptions struct {
 	DelayedRetry bool
 	// Max attempts to retry.
 	MaxRetries int32
-}
-
-type Event struct {
-	Action  string
-	Body    []byte
-	Context context.Context
 }
 
 type EventHandler func(Event) error

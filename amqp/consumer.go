@@ -1,7 +1,6 @@
 package amqp
 
 import (
-	"context"
 	"regexp"
 	"strings"
 	"sync"
@@ -226,9 +225,8 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 
 func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := h.fn(messaging.Event{
-		Action:  h.action,
-		Body:    msg.Body,
-		Context: context.Background(),
+		Action: h.action,
+		Body:   msg.Body,
 	})
 
 	if err != nil {
