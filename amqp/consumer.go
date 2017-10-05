@@ -1,6 +1,7 @@
 package amqp
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"sync"
@@ -12,11 +13,6 @@ import (
 	amqplib "github.com/streadway/amqp"
 )
 
-const (
-	MaxInt32   = 1<<31 - 1
-	MaxRetries = MaxInt32
-)
-
 var (
 	logger = log.WithFields(log.Fields{
 		"type":     "goevents",
@@ -25,12 +21,12 @@ var (
 )
 
 type handler struct {
-	action           string
-	fn               messaging.EventHandler
-	re               *regexp.Regexp
-	maxRetries       int32
-	retryDelay       time.Duration
-	delayProgression bool
+	action       string
+	fn           messaging.EventHandler
+	re           *regexp.Regexp
+	maxRetries   int32
+	retryDelay   time.Duration
+	delayedRetry bool
 }
 
 type Consumer struct {
@@ -229,7 +225,11 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 }
 
 func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
-	err := h.fn(msg.Body)
+	err := h.fn(messaging.Event{
+		Action:  h.action,
+		Body:    msg.Body,
+		Context: context.Background(),
+	})
 
 	if err != nil {
 		if h.maxRetries > 0 {
@@ -264,7 +264,7 @@ func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	delayNs := delay.Nanoseconds()
 
-	if h.delayProgression {
+	if h.delayedRetry {
 		delayNs *= 2
 	}
 
@@ -370,12 +370,12 @@ func (c *Consumer) SubscribeWithOptions(options messaging.SubscribeOptions) erro
 	}
 
 	c.handlers = append(c.handlers, handler{
-		action:           options.Action,
-		fn:               options.Handler,
-		re:               re,
-		maxRetries:       options.MaxRetries,
-		retryDelay:       options.RetryDelay,
-		delayProgression: options.DelayedRetry,
+		action:       options.Action,
+		fn:           options.Handler,
+		re:           re,
+		maxRetries:   options.MaxRetries,
+		retryDelay:   options.RetryDelay,
+		delayedRetry: options.DelayedRetry,
 	})
 
 	return nil

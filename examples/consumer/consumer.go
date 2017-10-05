@@ -29,20 +29,20 @@ func main() {
 		panic(err)
 	}
 
-	consumerA.Subscribe("object.eventA", func(body []byte) error {
-		fmt.Println("object.eventA:", string(body))
+	consumerA.Subscribe("object.eventA", func(e messaging.Event) error {
+		fmt.Println("object.eventA:", string(e.Body))
 		return nil
 	})
 
-	consumerA.Subscribe("object.eventB", func(body []byte) error {
-		fmt.Println("object.eventB:", string(body))
+	consumerA.Subscribe("object.eventB", func(e messaging.Event) error {
+		fmt.Println("object.eventB:", string(e.Body))
 		return nil
 	})
 
 	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
 		Action: "object.eventToRetryDelay",
-		Handler: func(body []byte) error {
-			fmt.Println("object.eventToRetryDelay:", string(body))
+		Handler: func(e messaging.Event) error {
+			fmt.Println("object.eventToRetryDelay:", string(e.Body))
 			return fmt.Errorf("Try again.")
 		},
 		RetryDelay:   10 * time.Second,
@@ -52,8 +52,8 @@ func main() {
 
 	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
 		Action: "object.eventToRetry",
-		Handler: func(body []byte) error {
-			fmt.Println("object.eventToRetry:", string(body))
+		Handler: func(e messaging.Event) error {
+			fmt.Println("object.eventToRetry:", string(e.Body))
 			return fmt.Errorf("Try again.")
 		},
 		RetryDelay:   1 * time.Second,
@@ -67,13 +67,13 @@ func main() {
 		panic(err)
 	}
 
-	consumerB.Subscribe("object.eventC", func(body []byte) error {
-		fmt.Println("object.eventC:", string(body))
+	consumerB.Subscribe("object.eventC", func(e messaging.Event) error {
+		fmt.Println("object.eventC:", string(e.Body))
 		return nil
 	})
 
-	consumerB.Subscribe("object.eventD", func(body []byte) error {
-		fmt.Println("object.eventD:", string(body))
+	consumerB.Subscribe("object.eventD", func(e messaging.Event) error {
+		fmt.Println("object.eventD:", string(e.Body))
 		return nil
 	})
 

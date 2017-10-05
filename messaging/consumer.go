@@ -1,10 +1,14 @@
 package messaging
 
 import (
+	"context"
 	"time"
 )
 
-type EventHandler func(body []byte) error
+const (
+	MaxInt32   = 1<<31 - 1
+	MaxRetries = MaxInt32
+)
 
 type SubscribeOptions struct {
 	// The action name.
@@ -20,6 +24,14 @@ type SubscribeOptions struct {
 	// Max attempts to retry.
 	MaxRetries int32
 }
+
+type Event struct {
+	Action  string
+	Body    []byte
+	Context context.Context
+}
+
+type EventHandler func(Event) error
 
 type Consumer interface {
 	Subscribe(action string, handler EventHandler) error
