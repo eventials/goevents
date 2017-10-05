@@ -13,13 +13,8 @@ func NewMockConsumer() messaging.Consumer {
 	return &Consumer{}
 }
 
-func (c *Consumer) Subscribe(action string, handler messaging.EventHandler) error {
-	args := c.Called(action, handler)
-	return args.Error(0)
-}
-
-func (c *Consumer) SubscribeWithOptions(options messaging.SubscribeOptions) error {
-	args := c.Called(options)
+func (c *Consumer) Subscribe(action string, handler messaging.EventHandler, options *messaging.SubscribeOptions) error {
+	args := c.Called(action, handler, options)
 	return args.Error(0)
 }
 

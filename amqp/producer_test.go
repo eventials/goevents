@@ -30,7 +30,7 @@ func TestPublish(t *testing.T) {
 	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -68,7 +68,7 @@ func TestPublishMultipleTimes(t *testing.T) {
 	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 

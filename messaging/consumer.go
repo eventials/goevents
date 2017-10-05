@@ -11,10 +11,6 @@ const (
 )
 
 type SubscribeOptions struct {
-	// The action name.
-	Action string
-	// The function that will be called.
-	Handler EventHandler
 	// The time to retry after it fails.
 	RetryDelay time.Duration
 	// If enable the retry time it will be incresed in power of two.
@@ -34,8 +30,7 @@ type Event struct {
 type EventHandler func(Event) error
 
 type Consumer interface {
-	Subscribe(action string, handler EventHandler) error
-	SubscribeWithOptions(options SubscribeOptions) error
+	Subscribe(action string, handler EventHandler, options *SubscribeOptions) error
 	Unsubscribe(action string) error
 	Consume()
 	Close()

@@ -32,30 +32,26 @@ func main() {
 	consumerA.Subscribe("object.eventA", func(e messaging.Event) error {
 		fmt.Println("object.eventA:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
 	consumerA.Subscribe("object.eventB", func(e messaging.Event) error {
 		fmt.Println("object.eventB:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
-	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "object.eventToRetryDelay",
-		Handler: func(e messaging.Event) error {
-			fmt.Println("object.eventToRetryDelay:", string(e.Body))
-			return fmt.Errorf("Try again.")
-		},
+	consumerA.Subscribe("object.eventToRetryDelay", func(e messaging.Event) error {
+		fmt.Println("object.eventToRetryDelay:", string(e.Body))
+		return fmt.Errorf("Try again.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   10 * time.Second,
 		DelayedRetry: true,
 		MaxRetries:   30,
 	})
 
-	consumerA.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "object.eventToRetry",
-		Handler: func(e messaging.Event) error {
-			fmt.Println("object.eventToRetry:", string(e.Body))
-			return fmt.Errorf("Try again.")
-		},
+	consumerA.Subscribe("object.eventToRetry", func(e messaging.Event) error {
+		fmt.Println("object.eventToRetry:", string(e.Body))
+		return fmt.Errorf("Try again.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   1 * time.Second,
 		DelayedRetry: false,
 		MaxRetries:   10,
@@ -70,12 +66,12 @@ func main() {
 	consumerB.Subscribe("object.eventC", func(e messaging.Event) error {
 		fmt.Println("object.eventC:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
 	consumerB.Subscribe("object.eventD", func(e messaging.Event) error {
 		fmt.Println("object.eventD:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
 	var wg sync.WaitGroup
 

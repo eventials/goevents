@@ -32,12 +32,12 @@ func TestSubscribeActions(t *testing.T) {
 	c.Subscribe("my_action_1", func(e messaging.Event) error {
 		func1 <- true
 		return nil
-	})
+	}, nil)
 
 	c.Subscribe("my_action_2", func(e messaging.Event) error {
 		func2 <- true
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -79,12 +79,12 @@ func TestSubscribeWildcardActions(t *testing.T) {
 	c.Subscribe("webinar.*", func(e messaging.Event) error {
 		func1 <- true
 		return nil
-	})
+	}, nil)
 
 	c.Subscribe("foobar.*", func(e messaging.Event) error {
 		func2 <- true
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -126,12 +126,12 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 	c.Subscribe("webinar.*", func(e messaging.Event) error {
 		func1 <- true
 		return nil
-	})
+	}, nil)
 
 	c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
 		func2 <- true
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -173,12 +173,12 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 	c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
 		func1 <- true
 		return nil
-	})
+	}, nil)
 
 	c.Subscribe("webinar.*", func(e messaging.Event) error {
 		func2 <- true
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -224,7 +224,7 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 		}
 
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -259,17 +259,15 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled++ }()
+	c.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled++ }()
 
-			if timesCalled == 0 {
-				return fmt.Errorf("Error")
-			}
+		if timesCalled == 0 {
+			return fmt.Errorf("Error")
+		}
 
-			return nil
-		},
+		return nil
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
 		MaxRetries:   5,
@@ -308,17 +306,15 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled++ }()
+	c.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled++ }()
 
-			if timesCalled == 0 {
-				panic("this is a panic!")
-			}
+		if timesCalled == 0 {
+			panic("this is a panic!")
+		}
 
-			return nil
-		},
+		return nil
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
 		MaxRetries:   5,
@@ -367,19 +363,17 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	c1.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled2++
 		return nil
-	})
+	}, nil)
 
-	c2.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled1++ }()
+	c2.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled1++ }()
 
-			if timesCalled1 == 0 {
-				return fmt.Errorf("Error.")
-			} else {
-				return nil
-			}
-		},
+		if timesCalled1 == 0 {
+			return fmt.Errorf("Error.")
+		} else {
+			return nil
+		}
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
 		MaxRetries:   5,
@@ -420,12 +414,10 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try five times more until it stops.
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled++ }()
-			return fmt.Errorf("Error.")
-		},
+	c.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled++ }()
+		return fmt.Errorf("Error.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
 		MaxRetries:   5,
@@ -464,12 +456,10 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled++ }()
-			return fmt.Errorf("Error.")
-		},
+	c.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled++ }()
+		return fmt.Errorf("Error.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: true,
 		MaxRetries:   3,
@@ -508,12 +498,10 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "my_action",
-		Handler: func(e messaging.Event) error {
-			defer func() { timesCalled++ }()
-			return fmt.Errorf("Error.")
-		},
+	c.Subscribe("my_action", func(e messaging.Event) error {
+		defer func() { timesCalled++ }()
+		return fmt.Errorf("Error.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: true,
 		MaxRetries:   5,
@@ -557,14 +545,12 @@ func TestActionRetryTimeout(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.SubscribeWithOptions(messaging.SubscribeOptions{
-		Action: "test1",
-		Handler: func(e messaging.Event) error {
-			defer func() {
-				myActionTimesCalled++
-			}()
-			return fmt.Errorf("Error.")
-		},
+	c.Subscribe("test1", func(e messaging.Event) error {
+		defer func() {
+			myActionTimesCalled++
+		}()
+		return fmt.Errorf("Error.")
+	}, &messaging.SubscribeOptions{
 		RetryDelay:   300 * time.Millisecond,
 		DelayedRetry: true,
 		MaxRetries:   4,
@@ -575,7 +561,7 @@ func TestActionRetryTimeout(t *testing.T) {
 			myAction2TimesCalled++
 		}()
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -622,7 +608,7 @@ func TestConsumePrefetch(t *testing.T) {
 		timesCalled++
 		<-wait
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
