@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eventials/goevents/messaging"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,10 +27,10 @@ func TestPublish(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("action.name", func(body []byte) error {
+	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 
@@ -64,10 +65,10 @@ func TestPublishMultipleTimes(t *testing.T) {
 	consumer := c.(*Consumer)
 	consumer.channel.QueuePurge(consumer.queueName, false)
 
-	c.Subscribe("action.name", func(body []byte) error {
+	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
 		return nil
-	})
+	}, nil)
 
 	go c.Consume()
 

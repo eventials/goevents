@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/eventials/goevents/amqp"
+	"github.com/eventials/goevents/messaging"
 )
 
 func main() {
@@ -28,25 +29,33 @@ func main() {
 		panic(err)
 	}
 
-	consumerA.Subscribe("object.eventA", func(body []byte) error {
-		fmt.Println("object.eventA:", string(body))
+	consumerA.Subscribe("object.eventA", func(e messaging.Event) error {
+		fmt.Println("object.eventA:", string(e.Body))
 		return nil
+	}, nil)
+
+	consumerA.Subscribe("object.eventB", func(e messaging.Event) error {
+		fmt.Println("object.eventB:", string(e.Body))
+		return nil
+	}, nil)
+
+	consumerA.Subscribe("object.eventToRetryDelay", func(e messaging.Event) error {
+		fmt.Println("object.eventToRetryDelay:", string(e.Body))
+		return fmt.Errorf("Try again.")
+	}, &messaging.SubscribeOptions{
+		RetryDelay:   10 * time.Second,
+		DelayedRetry: true,
+		MaxRetries:   30,
 	})
 
-	consumerA.Subscribe("object.eventB", func(body []byte) error {
-		fmt.Println("object.eventB:", string(body))
-		return nil
+	consumerA.Subscribe("object.eventToRetry", func(e messaging.Event) error {
+		fmt.Println("object.eventToRetry:", string(e.Body))
+		return fmt.Errorf("Try again.")
+	}, &messaging.SubscribeOptions{
+		RetryDelay:   1 * time.Second,
+		DelayedRetry: false,
+		MaxRetries:   10,
 	})
-
-	consumerA.SubscribeWithOptions("object.eventToRetryDelay", func(body []byte) error {
-		fmt.Println("object.eventToRetryDelay:", string(body))
-		return fmt.Errorf("Try again.")
-	}, 10*time.Second, true, 30)
-
-	consumerA.SubscribeWithOptions("object.eventToRetry", func(body []byte) error {
-		fmt.Println("object.eventToRetry:", string(body))
-		return fmt.Errorf("Try again.")
-	}, 1*time.Second, false, 10)
 
 	consumerB, err := conn.Consumer(false, "events-exchange", "events-queue-b")
 
@@ -54,15 +63,15 @@ func main() {
 		panic(err)
 	}
 
-	consumerB.Subscribe("object.eventC", func(body []byte) error {
-		fmt.Println("object.eventC:", string(body))
+	consumerB.Subscribe("object.eventC", func(e messaging.Event) error {
+		fmt.Println("object.eventC:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
-	consumerB.Subscribe("object.eventD", func(body []byte) error {
-		fmt.Println("object.eventD:", string(body))
+	consumerB.Subscribe("object.eventD", func(e messaging.Event) error {
+		fmt.Println("object.eventD:", string(e.Body))
 		return nil
-	})
+	}, nil)
 
 	var wg sync.WaitGroup
 

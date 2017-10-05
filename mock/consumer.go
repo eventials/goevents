@@ -9,22 +9,24 @@ type Consumer struct {
 	mock.Mock
 }
 
-func (c *Consumer) Subscribe(action string, handler messaging.EventHandler) error {
-	args := c.Called(action, handler)
-	return args.Error(1)
+func NewMockConsumer() messaging.Consumer {
+	return &Consumer{}
+}
+
+func (c *Consumer) Subscribe(action string, handler messaging.EventHandler, options *messaging.SubscribeOptions) error {
+	args := c.Called(action, handler, options)
+	return args.Error(0)
 }
 
 func (c *Consumer) Unsubscribe(action string) error {
 	args := c.Called(action)
-	return args.Error(1)
+	return args.Error(0)
 }
 
-func (c *Consumer) Listen() error {
-	args := c.Called()
-	return args.Error(1)
+func (c *Consumer) Consume() {
+	c.Called()
 }
 
-func (c *Consumer) ListenForever() error {
-	args := c.Called()
-	return args.Error(1)
+func (c *Consumer) Close() {
+	c.Called()
 }

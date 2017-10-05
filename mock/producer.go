@@ -1,11 +1,16 @@
 package mock
 
 import (
+	"github.com/eventials/goevents/messaging"
 	"github.com/stretchr/testify/mock"
 )
 
 type Producer struct {
 	mock.Mock
+}
+
+func NewMockProducer() messaging.Producer {
+	return &Producer{}
 }
 
 func (p *Producer) Publish(action string, data []byte) {
@@ -17,6 +22,6 @@ func (p *Producer) Close() {
 }
 
 func (p *Producer) NotifyClose() <-chan bool {
-	p.Called()
-	return make(chan bool)
+	args := p.Called()
+	return args.Get(0).(chan bool)
 }
