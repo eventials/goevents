@@ -225,6 +225,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 
 func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := h.fn(messaging.Event{
+		Id:     msg.MessageId,
 		Action: h.action,
 		Body:   msg.Body,
 	})
