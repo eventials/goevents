@@ -5,6 +5,7 @@ import (
 )
 
 type Event struct {
+	Id     string
 	Action string
 	Body   []byte
 	ctx    context.Context
