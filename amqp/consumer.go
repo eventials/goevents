@@ -28,7 +28,7 @@ type handler struct {
 	delayedRetry bool
 }
 
-type Consumer struct {
+type consumer struct {
 	config ConsumerConfig
 
 	m  sync.Mutex
@@ -57,7 +57,7 @@ type ConsumerConfig struct {
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
-func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
+func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (*consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval:      2 * time.Second,
 		PrefetchCount:             0,
@@ -66,8 +66,8 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 }
 
 // NewConsumerConfig returns a new AMQP Consumer.
-func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
-	consumer := &Consumer{
+func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
+	consumer := &consumer{
 		config:       config,
 		conn:         c.(*Connection),
 		autoAck:      autoAck,
@@ -88,7 +88,7 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 
 }
 
-func (c *Consumer) Close() {
+func (c *consumer) Close() {
 	func() {
 		c.m.Lock()
 		defer c.m.Unlock()
@@ -104,7 +104,7 @@ func (c *Consumer) Close() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) setupTopology() error {
+func (c *consumer) setupTopology() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -154,7 +154,7 @@ func (c *Consumer) setupTopology() error {
 	return nil
 }
 
-func (c *Consumer) handleReestablishedConnnection() {
+func (c *consumer) handleReestablishedConnnection() {
 	for !c.closed {
 		<-c.conn.NotifyReestablish()
 
@@ -168,7 +168,7 @@ func (c *Consumer) handleReestablishedConnnection() {
 	}
 }
 
-func (c *Consumer) dispatch(msg amqplib.Delivery) {
+func (c *consumer) dispatch(msg amqplib.Delivery) {
 	if h, ok := c.getHandler(msg); ok {
 		delay, isRetry := getXRetryDelayHeader(msg)
 
@@ -193,7 +193,7 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	}
 }
 
-func (c *Consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err error) {
+func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch x := r.(type) {
@@ -216,7 +216,7 @@ func (c *Consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 	return
 }
 
-func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := c.callAndHandlePanic(msg, h)
 
 	if err != nil {
@@ -249,7 +249,7 @@ func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 	}
 }
 
-func (c *Consumer) publishMessage(msg amqplib.Publishing, queue string) error {
+func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
 	channel, err := c.conn.OpenChannel()
 
 	if err != nil {
@@ -277,7 +277,7 @@ func (c *Consumer) publishMessage(msg amqplib.Publishing, queue string) error {
 	return nil
 }
 
-func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	delayNs := delay.Nanoseconds()
 
 	if h.delayedRetry {
@@ -313,7 +313,7 @@ func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 	}
 }
 
-func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
+func (c *consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -329,7 +329,7 @@ func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
 }
 
 // Subscribe allows to subscribe an action handler.
-func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
+func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)
@@ -371,7 +371,7 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 }
 
 // Unsubscribe allows to unsubscribe an action handler.
-func (c *Consumer) Unsubscribe(action string) error {
+func (c *consumer) Unsubscribe(action string) error {
 	err := c.channel.QueueUnbind(
 		c.queueName,    // queue name
 		action,         // routing key
@@ -400,7 +400,7 @@ func (c *Consumer) Unsubscribe(action string) error {
 }
 
 // Listen start to listen for new messages.
-func (c *Consumer) Consume() {
+func (c *consumer) Consume() {
 	logger.Info("Registered handlers:")
 
 	for _, handler := range c.handlers {

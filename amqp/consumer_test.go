@@ -24,8 +24,7 @@ func TestSubscribeActions(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		consumer := c.(*Consumer)
-		consumer.channel.QueuePurge(consumer.queueName, false)
+		c.channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action_1", func(e messaging.Event) error {
 			func1 <- true
@@ -70,8 +69,7 @@ func TestSubscribeWildcardActions(t *testing.T) {
 			defer c.Close()
 
 			// Clean all messages if any...
-			consumer := c.(*Consumer)
-			consumer.channel.QueuePurge(consumer.queueName, false)
+			c.channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.*", func(e messaging.Event) error {
 				func1 <- true
@@ -117,8 +115,7 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 			defer c.Close()
 
 			// Clean all messages if any...
-			consumer := c.(*Consumer)
-			consumer.channel.QueuePurge(consumer.queueName, false)
+			c.channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.*", func(e messaging.Event) error {
 				func1 <- true
@@ -164,8 +161,7 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 			defer c.Close()
 
 			// Clean all messages if any...
-			consumer := c.(*Consumer)
-			consumer.channel.QueuePurge(consumer.queueName, false)
+			c.channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
 				func1 <- true
@@ -210,8 +206,7 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 			defer c.Close()
 
 			// Clean all messages if any...
-			consumer := c.(*Consumer)
-			consumer.channel.QueuePurge(consumer.queueName, false)
+			c.channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("my_action", func(e messaging.Event) error {
 				defer func() { timesCalled++ }()
@@ -254,8 +249,7 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		consumer := c.(*Consumer)
-		consumer.channel.QueuePurge(consumer.queueName, false)
+		c.channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
@@ -301,8 +295,7 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		consumer := c.(*Consumer)
-		consumer.channel.QueuePurge(consumer.queueName, false)
+		c.channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
@@ -353,11 +346,9 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	defer c2.Close()
 
 	// Clean all messages if any...
-	consumer1 := c1.(*Consumer)
-	consumer1.channel.QueuePurge(consumer1.queueName, false)
+	c1.channel.QueuePurge(c1.queueName, false)
 
-	consumer2 := c2.(*Consumer)
-	consumer2.channel.QueuePurge(consumer2.queueName, false)
+	c2.channel.QueuePurge(c2.queueName, false)
 
 	c1.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled2++
@@ -409,8 +400,7 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try five times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -451,8 +441,7 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -492,8 +481,7 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		consumer := c.(*Consumer)
-		consumer.channel.QueuePurge(consumer.queueName, false)
+		c.channel.QueuePurge(c.queueName, false)
 
 		// It runs once and get an error, it will try three times more until it stops.
 		c.Subscribe("my_action", func(e messaging.Event) error {
@@ -540,8 +528,7 @@ func TestActionRetryTimeout(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		consumer := c.(*Consumer)
-		consumer.channel.QueuePurge(consumer.queueName, false)
+		c.channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("test1", func(e messaging.Event) error {
 			defer func() {
@@ -600,8 +587,7 @@ func TestConsumePrefetch(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	c.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled++
