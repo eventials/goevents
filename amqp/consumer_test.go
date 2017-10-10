@@ -503,7 +503,7 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 
 		select {
 		case <-time.After(1 * time.Second):
-			assert.Equal(t, 6, timesCalled, "Consumer got wrong quantity of messages.")
+			assert.Equal(t, 4, timesCalled, "Consumer got wrong quantity of messages.")
 		}
 	}
 }
@@ -519,9 +519,8 @@ func TestActionRetryTimeout(t *testing.T) {
 	defer conn.Close()
 
 	c, err := NewConsumerConfig(conn, false, "webhooks", "TestActionRetryTimeout", ConsumerConfig{
-		ConsumeRetryInterval:      2 * time.Second,
-		PrefetchCount:             1,
-		RetryTimeoutBeforeRequeue: 650 * time.Millisecond,
+		ConsumeRetryInterval: 2 * time.Second,
+		PrefetchCount:        1,
 	})
 
 	if assert.Nil(t, err) {
@@ -561,7 +560,7 @@ func TestActionRetryTimeout(t *testing.T) {
 
 		select {
 		case <-time.After(1 * time.Second):
-			assert.Equal(t, 5, myActionTimesCalled, "Consumer got wrong quantity of messages.")
+			assert.Equal(t, 3, myActionTimesCalled, "Consumer got wrong quantity of messages.")
 			assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
 		}
 	}

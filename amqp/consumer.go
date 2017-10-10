@@ -50,18 +50,16 @@ type consumer struct {
 
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
-	ConsumeRetryInterval      time.Duration
-	PrefetchCount             int
-	RetryTimeoutBeforeRequeue time.Duration
+	ConsumeRetryInterval time.Duration
+	PrefetchCount        int
 }
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (*consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
-		ConsumeRetryInterval:      2 * time.Second,
-		PrefetchCount:             0,
-		RetryTimeoutBeforeRequeue: 30 * time.Second,
+		ConsumeRetryInterval: 2 * time.Second,
+		PrefetchCount:        0,
 	})
 }
 
@@ -283,13 +281,16 @@ func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
 }
 
 func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
-	if h.delayedRetry {
-		delay *= 2
+	if delay > 0 {
+		if h.delayedRetry {
+			delay *= 2
+		}
+	} else {
+		delay = h.retryDelay
 	}
 
 	retryMsg := amqplib.Publishing{
 		Headers: amqplib.Table{
-			"x-retry-death": time.Now().UTC(),
 			"x-retry-count": retryCount + 1,
 			"x-retry-max":   h.maxRetries,
 			"x-retry-delay": delay.String(),
@@ -462,14 +463,6 @@ func getAction(msg amqplib.Delivery) string {
 	} else {
 		return msg.RoutingKey
 	}
-}
-
-func getXRetryDeathHeader(msg amqplib.Delivery) (time.Time, bool) {
-	if d, ok := msg.Headers["x-retry-death"]; ok {
-		return d.(time.Time), true
-	}
-
-	return time.Time{}, false
 }
 
 func getXRetryCountHeader(msg amqplib.Delivery) (int32, bool) {
