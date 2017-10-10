@@ -483,7 +483,7 @@ func getXRetryCountHeader(msg amqplib.Delivery) (int32, bool) {
 func getXRetryDelayHeader(msg amqplib.Delivery) (time.Duration, bool) {
 	if d, ok := msg.Headers["x-retry-delay"]; ok {
 		t, err := time.ParseDuration(d.(string))
-		if err != nil {
+		if err == nil {
 			return t, true
 		}
 	}
