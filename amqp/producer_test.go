@@ -24,8 +24,7 @@ func TestPublish(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
@@ -62,8 +61,7 @@ func TestPublishMultipleTimes(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	c.Subscribe("action.name", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()

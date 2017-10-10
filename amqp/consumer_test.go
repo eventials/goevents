@@ -20,38 +20,37 @@ func TestSubscribeActions(t *testing.T) {
 
 	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeActions")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+		c.Subscribe("my_action_1", func(e messaging.Event) error {
+			func1 <- true
+			return nil
+		}, nil)
 
-	c.Subscribe("my_action_1", func(e messaging.Event) error {
-		func1 <- true
-		return nil
-	}, nil)
+		c.Subscribe("my_action_2", func(e messaging.Event) error {
+			func2 <- true
+			return nil
+		}, nil)
 
-	c.Subscribe("my_action_2", func(e messaging.Event) error {
-		func2 <- true
-		return nil
-	}, nil)
+		go c.Consume()
 
-	go c.Consume()
+		p, err := NewProducer(conn, "webhooks")
 
-	p, err := NewProducer(conn, "webhooks")
+		assert.Nil(t, err)
 
-	assert.Nil(t, err)
+		p.Publish("my_action_1", []byte(""))
 
-	p.Publish("my_action_1", []byte(""))
-
-	select {
-	case <-func1:
-	case <-func2:
-		assert.Fail(t, "called wrong action")
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "timed out")
+		select {
+		case <-func1:
+		case <-func2:
+			assert.Fail(t, "called wrong action")
+		case <-time.After(1 * time.Second):
+			assert.Fail(t, "timed out")
+		}
 	}
 }
 
@@ -61,44 +60,43 @@ func TestSubscribeWildcardActions(t *testing.T) {
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer conn.Close()
 
-	defer conn.Close()
+		c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActions")
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActions")
+		if assert.Nil(t, err) {
+			defer c.Close()
 
-	assert.Nil(t, err)
+			// Clean all messages if any...
+			c.channel.QueuePurge(c.queueName, false)
 
-	defer c.Close()
+			c.Subscribe("webinar.*", func(e messaging.Event) error {
+				func1 <- true
+				return nil
+			}, nil)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+			c.Subscribe("foobar.*", func(e messaging.Event) error {
+				func2 <- true
+				return nil
+			}, nil)
 
-	c.Subscribe("webinar.*", func(e messaging.Event) error {
-		func1 <- true
-		return nil
-	}, nil)
+			go c.Consume()
 
-	c.Subscribe("foobar.*", func(e messaging.Event) error {
-		func2 <- true
-		return nil
-	}, nil)
+			p, err := NewProducer(conn, "webhooks")
 
-	go c.Consume()
+			assert.Nil(t, err)
 
-	p, err := NewProducer(conn, "webhooks")
+			p.Publish("webinar.state_changed", []byte(""))
 
-	assert.Nil(t, err)
-
-	p.Publish("webinar.state_changed", []byte(""))
-
-	select {
-	case <-func1:
-	case <-func2:
-		assert.Fail(t, "called wrong action")
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "timed out")
+			select {
+			case <-func1:
+			case <-func2:
+				assert.Fail(t, "called wrong action")
+			case <-time.After(1 * time.Second):
+				assert.Fail(t, "timed out")
+			}
+		}
 	}
 }
 
@@ -108,44 +106,43 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer conn.Close()
 
-	defer conn.Close()
+		c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActionOrder1")
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActionOrder1")
+		if assert.Nil(t, err) {
+			defer c.Close()
 
-	assert.Nil(t, err)
+			// Clean all messages if any...
+			c.channel.QueuePurge(c.queueName, false)
 
-	defer c.Close()
+			c.Subscribe("webinar.*", func(e messaging.Event) error {
+				func1 <- true
+				return nil
+			}, nil)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+			c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
+				func2 <- true
+				return nil
+			}, nil)
 
-	c.Subscribe("webinar.*", func(e messaging.Event) error {
-		func1 <- true
-		return nil
-	}, nil)
+			go c.Consume()
 
-	c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
-		func2 <- true
-		return nil
-	}, nil)
+			p, err := NewProducer(conn, "webhooks")
 
-	go c.Consume()
+			assert.Nil(t, err)
 
-	p, err := NewProducer(conn, "webhooks")
+			p.Publish("webinar.state_changed", []byte(""))
 
-	assert.Nil(t, err)
-
-	p.Publish("webinar.state_changed", []byte(""))
-
-	select {
-	case <-func1:
-	case <-func2:
-		assert.Fail(t, "called wrong action")
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "timed out")
+			select {
+			case <-func1:
+			case <-func2:
+				assert.Fail(t, "called wrong action")
+			case <-time.After(1 * time.Second):
+				assert.Fail(t, "timed out")
+			}
+		}
 	}
 }
 
@@ -155,44 +152,43 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer conn.Close()
 
-	defer conn.Close()
+		c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActionOrder2")
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActionOrder2")
+		if assert.Nil(t, err) {
+			defer c.Close()
 
-	assert.Nil(t, err)
+			// Clean all messages if any...
+			c.channel.QueuePurge(c.queueName, false)
 
-	defer c.Close()
+			c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
+				func1 <- true
+				return nil
+			}, nil)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+			c.Subscribe("webinar.*", func(e messaging.Event) error {
+				func2 <- true
+				return nil
+			}, nil)
 
-	c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
-		func1 <- true
-		return nil
-	}, nil)
+			go c.Consume()
 
-	c.Subscribe("webinar.*", func(e messaging.Event) error {
-		func2 <- true
-		return nil
-	}, nil)
+			p, err := NewProducer(conn, "webhooks")
 
-	go c.Consume()
+			assert.Nil(t, err)
 
-	p, err := NewProducer(conn, "webhooks")
+			p.Publish("webinar.state_changed", []byte(""))
 
-	assert.Nil(t, err)
-
-	p.Publish("webinar.state_changed", []byte(""))
-
-	select {
-	case <-func1:
-	case <-func2:
-		assert.Fail(t, "called wrong action")
-	case <-time.After(1 * time.Second):
-		assert.Fail(t, "timed out")
+			select {
+			case <-func1:
+			case <-func2:
+				assert.Fail(t, "called wrong action")
+			case <-time.After(1 * time.Second):
+				assert.Fail(t, "timed out")
+			}
+		}
 	}
 }
 
@@ -201,41 +197,40 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 
 	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer conn.Close()
 
-	defer conn.Close()
+		c, err := NewConsumer(conn, false, "webhooks", "TestDontRetryMessageIfFailsToProcess")
 
-	c, err := NewConsumer(conn, false, "webhooks", "TestDontRetryMessageIfFailsToProcess")
+		if assert.Nil(t, err) {
+			defer c.Close()
 
-	assert.Nil(t, err)
+			// Clean all messages if any...
+			c.channel.QueuePurge(c.queueName, false)
 
-	defer c.Close()
+			c.Subscribe("my_action", func(e messaging.Event) error {
+				defer func() { timesCalled++ }()
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+				if timesCalled == 0 {
+					return fmt.Errorf("Error")
+				}
 
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		defer func() { timesCalled++ }()
+				return nil
+			}, nil)
 
-		if timesCalled == 0 {
-			return fmt.Errorf("Error")
+			go c.Consume()
+
+			p, err := NewProducer(conn, "webhooks")
+
+			assert.Nil(t, err)
+
+			p.Publish("my_action", []byte(""))
+
+			select {
+			case <-time.After(1 * time.Second):
+				assert.Equal(t, 1, timesCalled, "Consumer got wrong quantity of messages.")
+			}
 		}
-
-		return nil
-	}, nil)
-
-	go c.Consume()
-
-	p, err := NewProducer(conn, "webhooks")
-
-	assert.Nil(t, err)
-
-	p.Publish("my_action", []byte(""))
-
-	select {
-	case <-time.After(1 * time.Second):
-		assert.Equal(t, 1, timesCalled, "Consumer got wrong quantity of messages.")
 	}
 }
 
@@ -250,39 +245,38 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 
 	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfFailsToProcess")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+		c.Subscribe("my_action", func(e messaging.Event) error {
+			defer func() { timesCalled++ }()
 
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		defer func() { timesCalled++ }()
+			if timesCalled == 0 {
+				return fmt.Errorf("Error")
+			}
 
-		if timesCalled == 0 {
-			return fmt.Errorf("Error")
+			return nil
+		}, &messaging.SubscribeOptions{
+			RetryDelay:   100 * time.Millisecond,
+			DelayedRetry: false,
+			MaxRetries:   5,
+		})
+
+		go c.Consume()
+
+		p, err := NewProducer(conn, "webhooks")
+
+		assert.Nil(t, err)
+
+		p.Publish("my_action", []byte(""))
+
+		select {
+		case <-time.After(1 * time.Second):
+			assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
 		}
-
-		return nil
-	}, &messaging.SubscribeOptions{
-		RetryDelay:   100 * time.Millisecond,
-		DelayedRetry: false,
-		MaxRetries:   5,
-	})
-
-	go c.Consume()
-
-	p, err := NewProducer(conn, "webhooks")
-
-	assert.Nil(t, err)
-
-	p.Publish("my_action", []byte(""))
-
-	select {
-	case <-time.After(1 * time.Second):
-		assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
 	}
 }
 
@@ -297,39 +291,38 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 
 	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfPanicsToProcess")
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+		c.Subscribe("my_action", func(e messaging.Event) error {
+			defer func() { timesCalled++ }()
 
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		defer func() { timesCalled++ }()
+			if timesCalled == 0 {
+				panic("this is a panic!")
+			}
 
-		if timesCalled == 0 {
-			panic("this is a panic!")
+			return nil
+		}, &messaging.SubscribeOptions{
+			RetryDelay:   100 * time.Millisecond,
+			DelayedRetry: false,
+			MaxRetries:   5,
+		})
+
+		go c.Consume()
+
+		p, err := NewProducer(conn, "webhooks")
+
+		assert.Nil(t, err)
+
+		p.Publish("my_action", []byte(""))
+
+		select {
+		case <-time.After(1 * time.Second):
+			assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
 		}
-
-		return nil
-	}, &messaging.SubscribeOptions{
-		RetryDelay:   100 * time.Millisecond,
-		DelayedRetry: false,
-		MaxRetries:   5,
-	})
-
-	go c.Consume()
-
-	p, err := NewProducer(conn, "webhooks")
-
-	assert.Nil(t, err)
-
-	p.Publish("my_action", []byte(""))
-
-	select {
-	case <-time.After(1 * time.Second):
-		assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
 	}
 }
 
@@ -353,11 +346,9 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	defer c2.Close()
 
 	// Clean all messages if any...
-	consumer1 := c1.(*Consumer)
-	consumer1.channel.QueuePurge(consumer1.queueName, false)
+	c1.channel.QueuePurge(c1.queueName, false)
 
-	consumer2 := c2.(*Consumer)
-	consumer2.channel.QueuePurge(consumer2.queueName, false)
+	c2.channel.QueuePurge(c2.queueName, false)
 
 	c1.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled2++
@@ -409,8 +400,7 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try five times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -451,8 +441,7 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -488,35 +477,34 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 	defer conn.Close()
 
 	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetriesWhenDelayed")
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+		// It runs once and get an error, it will try three times more until it stops.
+		c.Subscribe("my_action", func(e messaging.Event) error {
+			defer func() { timesCalled++ }()
+			return fmt.Errorf("Error.")
+		}, &messaging.SubscribeOptions{
+			RetryDelay:   100 * time.Millisecond,
+			DelayedRetry: true,
+			MaxRetries:   5,
+		})
 
-	// It runs once and get an error, it will try three times more until it stops.
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
-	}, &messaging.SubscribeOptions{
-		RetryDelay:   100 * time.Millisecond,
-		DelayedRetry: true,
-		MaxRetries:   5,
-	})
+		go c.Consume()
 
-	go c.Consume()
+		p, err := NewProducer(conn, "webhooks")
 
-	p, err := NewProducer(conn, "webhooks")
+		assert.Nil(t, err)
 
-	assert.Nil(t, err)
+		p.Publish("my_action", []byte(""))
 
-	p.Publish("my_action", []byte(""))
-
-	select {
-	case <-time.After(1 * time.Second):
-		assert.True(t, timesCalled == 4 || timesCalled == 5, "Consumer got wrong quantity of messages.")
+		select {
+		case <-time.After(1 * time.Second):
+			assert.Equal(t, 6, timesCalled, "Consumer got wrong quantity of messages.")
+		}
 	}
 }
 
@@ -536,47 +524,46 @@ func TestActionRetryTimeout(t *testing.T) {
 		RetryTimeoutBeforeRequeue: 650 * time.Millisecond,
 	})
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
 
-	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+		c.Subscribe("test1", func(e messaging.Event) error {
+			defer func() {
+				myActionTimesCalled++
+			}()
+			return fmt.Errorf("Error.")
+		}, &messaging.SubscribeOptions{
+			RetryDelay:   300 * time.Millisecond,
+			DelayedRetry: true,
+			MaxRetries:   4,
+		})
 
-	c.Subscribe("test1", func(e messaging.Event) error {
-		defer func() {
-			myActionTimesCalled++
-		}()
-		return fmt.Errorf("Error.")
-	}, &messaging.SubscribeOptions{
-		RetryDelay:   300 * time.Millisecond,
-		DelayedRetry: true,
-		MaxRetries:   4,
-	})
+		c.Subscribe("test2", func(e messaging.Event) error {
+			defer func() {
+				myAction2TimesCalled++
+			}()
+			return nil
+		}, nil)
 
-	c.Subscribe("test2", func(e messaging.Event) error {
-		defer func() {
-			myAction2TimesCalled++
-		}()
-		return nil
-	}, nil)
+		go c.Consume()
 
-	go c.Consume()
+		p, err := NewProducer(conn, "webhooks")
 
-	p, err := NewProducer(conn, "webhooks")
+		assert.Nil(t, err)
 
-	assert.Nil(t, err)
+		p.Publish("test1", []byte(""))
 
-	p.Publish("test1", []byte(""))
+		time.Sleep(200 * time.Millisecond)
+		p.Publish("test2", []byte(""))
 
-	time.Sleep(200 * time.Millisecond)
-	p.Publish("test2", []byte(""))
-
-	select {
-	case <-time.After(1 * time.Second):
-		assert.Equal(t, 3, myActionTimesCalled, "Consumer got wrong quantity of messages.")
-		assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
+		select {
+		case <-time.After(1 * time.Second):
+			assert.Equal(t, 5, myActionTimesCalled, "Consumer got wrong quantity of messages.")
+			assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
+		}
 	}
 }
 
@@ -600,8 +587,7 @@ func TestConsumePrefetch(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	consumer := c.(*Consumer)
-	consumer.channel.QueuePurge(consumer.queueName, false)
+	c.channel.QueuePurge(c.queueName, false)
 
 	c.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled++

@@ -1,15 +1,15 @@
 package amqp
 
 import (
+	"errors"
+	"fmt"
+	"github.com/eventials/goevents/messaging"
+	log "github.com/sirupsen/logrus"
+	amqplib "github.com/streadway/amqp"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/eventials/goevents/messaging"
-
-	log "github.com/sirupsen/logrus"
-	amqplib "github.com/streadway/amqp"
 )
 
 var (
@@ -28,7 +28,7 @@ type handler struct {
 	delayedRetry bool
 }
 
-type Consumer struct {
+type consumer struct {
 	config ConsumerConfig
 
 	m  sync.Mutex
@@ -57,7 +57,7 @@ type ConsumerConfig struct {
 
 // NewConsumer returns a new AMQP Consumer.
 // Uses a default ConsumerConfig with 2 second of consume retry interval.
-func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (messaging.Consumer, error) {
+func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (*consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval:      2 * time.Second,
 		PrefetchCount:             0,
@@ -66,8 +66,8 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 }
 
 // NewConsumerConfig returns a new AMQP Consumer.
-func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (messaging.Consumer, error) {
-	consumer := &Consumer{
+func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
+	consumer := &consumer{
 		config:       config,
 		conn:         c.(*Connection),
 		autoAck:      autoAck,
@@ -78,12 +78,17 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 
 	err := consumer.setupTopology()
 
+	if err != nil {
+		return nil, err
+	}
+
 	go consumer.handleReestablishedConnnection()
 
 	return consumer, err
+
 }
 
-func (c *Consumer) Close() {
+func (c *consumer) Close() {
 	func() {
 		c.m.Lock()
 		defer c.m.Unlock()
@@ -99,7 +104,7 @@ func (c *Consumer) Close() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) setupTopology() error {
+func (c *consumer) setupTopology() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -149,7 +154,7 @@ func (c *Consumer) setupTopology() error {
 	return nil
 }
 
-func (c *Consumer) handleReestablishedConnnection() {
+func (c *consumer) handleReestablishedConnnection() {
 	for !c.closed {
 		<-c.conn.NotifyReestablish()
 
@@ -163,67 +168,15 @@ func (c *Consumer) handleReestablishedConnnection() {
 	}
 }
 
-func (c *Consumer) dispatch(msg amqplib.Delivery) {
+func (c *consumer) dispatch(msg amqplib.Delivery) {
 	if h, ok := c.getHandler(msg); ok {
 		delay, isRetry := getXRetryDelayHeader(msg)
 
-		if !isRetry {
-			delay = h.retryDelay
+		if isRetry {
+			<-time.After(delay)
 		}
 
 		retryCount, _ := getXRetryCountHeader(msg)
-
-		defer func() {
-			if err := recover(); err != nil {
-				if h.maxRetries > 0 {
-					c.retryMessage(msg, h, retryCount, delay)
-				} else {
-					logger.WithFields(log.Fields{
-						"error":      err,
-						"message_id": msg.MessageId,
-					}).Error("Failed to process event.")
-
-					if !c.autoAck {
-						msg.Ack(false)
-					}
-				}
-			}
-		}()
-
-		death, isRetry := getXRetryDeathHeader(msg)
-
-		if isRetry {
-			since := time.Since(death)
-			tts := delay - since
-
-			logger.WithFields(log.Fields{
-				"max_retries":     h.maxRetries,
-				"message_id":      msg.MessageId,
-				"retry_in_millis": tts,
-				"retry_timeout":   c.config.RetryTimeoutBeforeRequeue,
-			}).Info("Retrying message.")
-
-			if since < delay {
-				select {
-				case <-time.After(c.config.RetryTimeoutBeforeRequeue):
-					logger.WithFields(log.Fields{
-						"max_retries": h.maxRetries,
-						"message_id":  msg.MessageId,
-					}).Info("Requeue message.")
-
-					c.requeueMessage(msg)
-				case <-time.After(tts):
-					logger.WithFields(log.Fields{
-						"max_retries": h.maxRetries,
-						"message_id":  msg.MessageId,
-					}).Info("Dispathing retry message.")
-
-					c.doDispatch(msg, h, retryCount, delay)
-				}
-
-				return
-			}
-		}
 
 		c.doDispatch(msg, h, retryCount, delay)
 	} else {
@@ -240,12 +193,31 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 	}
 }
 
-func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
-	err := h.fn(messaging.Event{
+func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case error:
+				err = x
+			default:
+				err = errors.New("Unknown panic")
+			}
+		}
+	}()
+
+	err = h.fn(messaging.Event{
 		Id:     msg.MessageId,
 		Action: h.action,
 		Body:   msg.Body,
 	})
+
+	return
+}
+
+func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+	err := c.callAndHandlePanic(msg, h)
 
 	if err != nil {
 		if h.maxRetries > 0 {
@@ -277,7 +249,35 @@ func (c *Consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 	}
 }
 
-func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
+func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
+	channel, err := c.conn.OpenChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	if err := channel.Confirm(false); err != nil {
+		return fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+	}
+
+	confirms := channel.NotifyPublish(make(chan amqplib.Confirmation, 1))
+
+	err = channel.Publish("", queue, false, false, msg)
+
+	if err != nil {
+		return err
+	} else {
+		if confirmed := <-confirms; !confirmed.Ack {
+			return ErrNotAcked
+		}
+	}
+
+	return nil
+}
+
+func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	delayNs := delay.Nanoseconds()
 
 	if h.delayedRetry {
@@ -298,7 +298,7 @@ func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 		MessageId:    msg.MessageId,
 	}
 
-	err := c.channel.Publish("", c.queueName, false, false, retryMsg)
+	err := c.publishMessage(retryMsg, c.queueName)
 
 	if err != nil {
 		logger.WithFields(log.Fields{
@@ -313,32 +313,7 @@ func (c *Consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 	}
 }
 
-func (c *Consumer) requeueMessage(msg amqplib.Delivery) {
-	retryMsg := amqplib.Publishing{
-		Headers:      msg.Headers,
-		Timestamp:    msg.Timestamp,
-		DeliveryMode: msg.DeliveryMode,
-		Body:         msg.Body,
-		MessageId:    msg.MessageId,
-	}
-
-	err := c.channel.Publish("", c.queueName, false, false, retryMsg)
-
-	if err != nil {
-		logger.WithFields(log.Fields{
-			"messageId": msg.MessageId,
-			"error":     err,
-		}).Error("Failed to requeue.")
-
-		if !c.autoAck {
-			msg.Nack(false, true)
-		}
-	} else if !c.autoAck {
-		msg.Ack(false)
-	}
-}
-
-func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
+func (c *consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -354,7 +329,7 @@ func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
 }
 
 // Subscribe allows to subscribe an action handler.
-func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
+func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
 	// TODO: Replace # pattern too.
 	pattern := strings.Replace(action, "*", "(.*)", 0)
 	re, err := regexp.Compile(pattern)
@@ -396,7 +371,7 @@ func (c *Consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 }
 
 // Unsubscribe allows to unsubscribe an action handler.
-func (c *Consumer) Unsubscribe(action string) error {
+func (c *consumer) Unsubscribe(action string) error {
 	err := c.channel.QueueUnbind(
 		c.queueName,    // queue name
 		action,         // routing key
@@ -425,7 +400,7 @@ func (c *Consumer) Unsubscribe(action string) error {
 }
 
 // Listen start to listen for new messages.
-func (c *Consumer) Consume() {
+func (c *consumer) Consume() {
 	logger.Info("Registered handlers:")
 
 	for _, handler := range c.handlers {
