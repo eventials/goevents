@@ -83,6 +83,12 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 }
 
 func (c *Consumer) Close() {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	// Unsubscribe all handlers
+	c.handlers = make([]handler, 0)
+
 	c.closed = true
 	c.channel.Close()
 }
@@ -215,10 +221,15 @@ func (c *Consumer) dispatch(msg amqplib.Delivery) {
 
 		c.doDispatch(msg, h, retryCount, delay)
 	} else {
-		// got wrong message?
-		// ignore and don't requeue.
 		if !c.autoAck {
-			msg.Nack(false, false)
+			err := msg.Nack(false, true)
+
+			if err != nil {
+				logger.WithFields(log.Fields{
+					"error":      err,
+					"message_id": msg.MessageId,
+				}).Error("Failed to nack message.")
+			}
 		}
 	}
 }
@@ -322,6 +333,9 @@ func (c *Consumer) requeueMessage(msg amqplib.Delivery) {
 }
 
 func (c *Consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	action := getAction(msg)
 
 	for _, h := range c.handlers {
@@ -442,9 +456,19 @@ func (c *Consumer) Consume() {
 			"queue": c.queueName,
 		}).Info("Consuming messages...")
 
+		wg := &sync.WaitGroup{}
+
 		for m := range msgs {
-			go c.dispatch(m)
+			logger.Info("Received from channel.")
+			wg.Add(1)
+			go func(msg amqplib.Delivery) {
+				c.dispatch(msg)
+				wg.Done()
+			}(m)
 		}
+
+		// Wait all go routine finish.
+		wg.Wait()
 
 		logger.WithFields(log.Fields{
 			"queue":  c.queueName,

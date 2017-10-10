@@ -2,11 +2,10 @@ package amqp
 
 import (
 	"fmt"
-	"testing"
-	"time"
-
 	"github.com/eventials/goevents/messaging"
 	"github.com/stretchr/testify/assert"
+	"testing"
+	"time"
 )
 
 func TestSubscribeActions(t *testing.T) {
