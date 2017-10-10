@@ -31,7 +31,8 @@ type handler struct {
 type Consumer struct {
 	config ConsumerConfig
 
-	m sync.Mutex
+	m  sync.Mutex
+	wg sync.WaitGroup
 
 	conn     *Connection
 	autoAck  bool
@@ -83,14 +84,19 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 }
 
 func (c *Consumer) Close() {
-	c.m.Lock()
-	defer c.m.Unlock()
+	func() {
+		c.m.Lock()
+		defer c.m.Unlock()
 
-	// Unsubscribe all handlers
-	c.handlers = make([]handler, 0)
+		// Unsubscribe all handlers
+		c.handlers = make([]handler, 0)
 
-	c.closed = true
-	c.channel.Close()
+		c.closed = true
+		c.channel.Close()
+	}()
+
+	// Wait all go routine finish.
+	c.wg.Wait()
 }
 
 func (c *Consumer) setupTopology() error {
@@ -456,19 +462,14 @@ func (c *Consumer) Consume() {
 			"queue": c.queueName,
 		}).Info("Consuming messages...")
 
-		wg := &sync.WaitGroup{}
-
 		for m := range msgs {
 			logger.Info("Received from channel.")
-			wg.Add(1)
+			c.wg.Add(1)
 			go func(msg amqplib.Delivery) {
 				c.dispatch(msg)
-				wg.Done()
+				c.wg.Done()
 			}(m)
 		}
-
-		// Wait all go routine finish.
-		wg.Wait()
 
 		logger.WithFields(log.Fields{
 			"queue":  c.queueName,
