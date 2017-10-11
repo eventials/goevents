@@ -108,6 +108,10 @@ func (c *consumer) setupTopology() error {
 
 	var err error
 
+	if c.channel != nil {
+		c.channel.Close()
+	}
+
 	c.channel, err = c.conn.OpenChannel()
 
 	if err != nil {
@@ -433,6 +437,8 @@ func (c *consumer) Consume() {
 			}).Error("Error setting up consumer...")
 
 			time.Sleep(c.config.ConsumeRetryInterval)
+
+			c.setupTopology()
 
 			continue
 		}
