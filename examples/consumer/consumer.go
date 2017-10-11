@@ -20,9 +20,8 @@ func main() {
 	}
 
 	consumerA, err := amqp.NewConsumerConfig(conn, false, "events-exchange", "events-queue-a", amqp.ConsumerConfig{
-		ConsumeRetryInterval:      2 * time.Second,
-		PrefetchCount:             1,
-		RetryTimeoutBeforeRequeue: 60 * time.Second,
+		ConsumeRetryInterval: 2 * time.Second,
+		PrefetchCount:        1,
 	})
 
 	if err != nil {
