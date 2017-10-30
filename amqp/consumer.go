@@ -226,12 +226,24 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := c.callAndHandlePanic(msg, h)
 
-	if err != nil {
+	if err == nil {
+		logger.WithFields(log.Fields{
+			"action":     h.action,
+			"body":       msg.Body,
+			"message_id": msg.MessageId,
+		}).Error("Message handled successfully.")
+
+		if !c.autoAck {
+			msg.Ack(false)
+		}
+	} else {
 		if h.maxRetries > 0 {
 			if retryCount >= h.maxRetries {
 				logger.WithFields(log.Fields{
-					"max_retries": h.maxRetries,
-					"message_id":  msg.MessageId,
+					"action":     h.action,
+					"body":       msg.Body,
+					"error":      err,
+					"message_id": msg.MessageId,
 				}).Error("Maximum retries reached. Giving up.")
 
 				if !c.autoAck {
@@ -239,6 +251,8 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 				}
 			} else {
 				logger.WithFields(log.Fields{
+					"action":     h.action,
+					"body":       msg.Body,
 					"error":      err,
 					"message_id": msg.MessageId,
 				}).Error("Failed to process event. Retrying...")
@@ -247,12 +261,12 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 			}
 		} else {
 			logger.WithFields(log.Fields{
+				"action":     h.action,
+				"body":       msg.Body,
 				"error":      err,
 				"message_id": msg.MessageId,
 			}).Error("Failed to process event.")
 		}
-	} else if !c.autoAck {
-		msg.Ack(false)
 	}
 }
 
@@ -449,7 +463,9 @@ func (c *consumer) Consume() {
 
 		for m := range msgs {
 			logger.Info("Received from channel.")
+
 			c.wg.Add(1)
+
 			go func(msg amqplib.Delivery) {
 				c.dispatch(msg)
 				c.wg.Done()
