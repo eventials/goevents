@@ -208,19 +208,26 @@ func (p *producer) isClosed() bool {
 func (p *producer) drainInternalQueue() {
 	for m := range p.internalQueue {
 		var retry = true
+
 		for retry && !p.isClosed() {
 			log.WithFields(log.Fields{
-				"type":     "goevents",
-				"sub_type": "producer",
+				"action":     m.action,
+				"body":       m.msg.Body,
+				"message_id": m.msg.MessageId,
+				"type":       "goevents",
+				"sub_type":   "producer",
 			}).Info("Publishing message to the exchange.")
 
 			err := p.publishMessage(m.msg, m.action)
 
 			if err != nil {
 				log.WithFields(log.Fields{
-					"type":     "goevents",
-					"sub_type": "producer",
-					"error":    err,
+					"action":     m.action,
+					"body":       m.msg.Body,
+					"message_id": m.msg.MessageId,
+					"error":      err,
+					"type":       "goevents",
+					"sub_type":   "producer",
 				}).Error("Error publishing message to the exchange. Retrying...")
 
 				time.Sleep(p.config.publishInterval)
