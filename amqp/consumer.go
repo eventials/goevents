@@ -52,6 +52,9 @@ type consumer struct {
 type ConsumerConfig struct {
 	ConsumeRetryInterval time.Duration
 	PrefetchCount        int
+	DurableQueue         bool
+	AutoDelete           bool
+	PrefixName           string
 }
 
 // NewConsumer returns a new AMQP Consumer.
@@ -60,6 +63,8 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        0,
+		DurableQueue:         true,
+		AutoDelete:           false,
 	})
 }
 
@@ -102,6 +107,10 @@ func (c *consumer) Close() {
 	c.wg.Wait()
 }
 
+func (c *consumer) uniqueNameWithPrefix() string {
+	return fmt.Sprint("%s%d", c.config.PrefixName, time.Now().UnixNano())
+}
+
 func (c *consumer) setupTopology() error {
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -138,13 +147,17 @@ func (c *consumer) setupTopology() error {
 		return err
 	}
 
+	if c.queueName == "" && c.config.PrefixName != "" {
+		c.queueName = c.uniqueNameWithPrefix()
+	}
+
 	q, err := c.channel.QueueDeclare(
-		c.queueName, // name
-		true,        // durable
-		false,       // auto-delete
-		false,       // exclusive
-		false,       // no-wait
-		nil,         // arguments
+		c.queueName,           // name
+		c.config.DurableQueue, // durable
+		c.config.AutoDelete,   // auto-delete
+		false,                 // exclusive
+		false,                 // no-wait
+		nil,                   // arguments
 	)
 
 	if err != nil {
