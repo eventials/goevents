@@ -108,7 +108,7 @@ func (c *consumer) Close() {
 }
 
 func (c *consumer) uniqueNameWithPrefix() string {
-	return fmt.Sprint("%s%d", c.config.PrefixName, time.Now().UnixNano())
+	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
 }
 
 func (c *consumer) setupTopology() error {
