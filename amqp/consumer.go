@@ -147,7 +147,7 @@ func (c *consumer) setupTopology() error {
 		return err
 	}
 
-	if c.queueName == "" && c.config.PrefixName != "" {
+	if c.config.PrefixName != "" {
 		c.queueName = c.uniqueNameWithPrefix()
 	}
 
