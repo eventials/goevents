@@ -626,3 +626,48 @@ func TestConsumePrefetch(t *testing.T) {
 		wait <- true
 	}
 }
+
+func TestBlankQueueWithPrefix(t *testing.T) {
+	myActionTimesCalled := 0
+
+	conn, err := NewConnection("amqp://guest:guest@broker:5672/")
+
+	assert.Nil(t, err)
+
+	defer conn.Close()
+
+	c, err := NewConsumerConfig(conn, false, "webhooks", "", ConsumerConfig{
+		ConsumeRetryInterval: 2 * time.Second,
+		PrefetchCount:        1,
+		PrefixName:           "test@",
+	})
+
+	if assert.Nil(t, err) {
+		defer c.Close()
+
+		// Clean all messages if any...
+		c.channel.QueuePurge(c.queueName, false)
+
+		c.Subscribe("test1", func(e messaging.Event) error {
+			defer func() {
+				myActionTimesCalled++
+			}()
+			return nil
+		}, nil)
+
+		go c.Consume()
+
+		p, err := NewProducer(conn, "webhooks")
+
+		assert.Nil(t, err)
+
+		p.Publish("test1", []byte(""))
+
+		time.Sleep(200 * time.Millisecond)
+
+		select {
+		case <-time.After(1 * time.Second):
+			assert.Equal(t, 1, myActionTimesCalled, "Consumer got wrong quantity of messages.")
+		}
+	}
+}
