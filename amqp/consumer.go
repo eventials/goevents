@@ -429,6 +429,14 @@ func (c *consumer) Consume() {
 	}
 
 	for !c.closed {
+		if !c.conn.IsConnected() {
+			logger.Info("Connection not established.")
+
+			time.Sleep(c.config.ConsumeRetryInterval)
+
+			continue
+		}
+
 		logger.WithFields(log.Fields{
 			"queue": c.queueName,
 		}).Debug("Setting up consumer channel...")
@@ -448,10 +456,6 @@ func (c *consumer) Consume() {
 				"queue": c.queueName,
 				"error": err,
 			}).Error("Error setting up consumer...")
-
-			time.Sleep(c.config.ConsumeRetryInterval)
-
-			c.setupTopology()
 
 			continue
 		}

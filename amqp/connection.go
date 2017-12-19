@@ -17,6 +17,7 @@ type Connection struct {
 	url        string
 	connection *amqplib.Connection
 	closed     bool
+	connected  bool
 
 	reestablishs []chan bool
 }
@@ -36,17 +37,18 @@ func NewConnection(url string) (messaging.Connection, error) {
 
 // NewConnectionConfig returns an AMQP Connection.
 func NewConnectionConfig(url string, config ConnectionConfig) (messaging.Connection, error) {
-	conn, err := amqplib.Dial(url)
+	connection := &Connection{
+		url:    url,
+		config: config,
+	}
+
+	err := connection.dial()
 
 	if err != nil {
 		return nil, err
 	}
 
-	connection := &Connection{
-		url:        url,
-		connection: conn,
-		config:     config,
-	}
+	connection.setConnected(true)
 
 	go connection.handleConnectionClose()
 
@@ -99,12 +101,19 @@ func (c *Connection) Close() {
 	c.connection.Close()
 }
 
+func (c *Connection) IsConnected() bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	return c.connected
+}
+
 // WaitUntilConnectionCloses holds the execution until the connection closes.
 func (c *Connection) WaitUntilConnectionCloses() {
 	<-c.NotifyConnectionClose()
 }
 
-func (c *Connection) reestablish() error {
+func (c *Connection) dial() error {
 	conn, err := amqplib.Dial(c.url)
 
 	c.m.Lock()
@@ -115,14 +124,24 @@ func (c *Connection) reestablish() error {
 	return err
 }
 
+func (c *Connection) setConnected(connected bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.connected = connected
+}
+
 func (c *Connection) handleConnectionClose() {
 	for !c.closed {
 		c.WaitUntilConnectionCloses()
+		c.setConnected(false)
 
 		for i := 0; !c.closed; i++ {
-			err := c.reestablish()
+			err := c.dial()
 
 			if err == nil {
+				c.setConnected(true)
+
 				log.WithFields(log.Fields{
 					"type":     "goevents",
 					"sub_type": "connection",
