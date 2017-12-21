@@ -111,11 +111,21 @@ func (c *consumer) uniqueNameWithPrefix() string {
 	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
 }
 
-func (c *consumer) setupTopology() error {
+func (c *consumer) setupTopology() (err error) {
 	c.m.Lock()
-	defer c.m.Unlock()
-
-	var err error
+	defer func() {
+		c.m.Unlock()
+		if r := recover(); r != nil {
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case error:
+				err = x
+			default:
+				err = errors.New("Unknown panic")
+			}
+		}
+	}()
 
 	if c.channel != nil {
 		c.channel.Close()
@@ -469,7 +479,20 @@ func (c *consumer) Consume() {
 			logger.WithFields(log.Fields{
 				"queue": c.queueName,
 				"error": err,
-			}).Error("Error setting up consumer...")
+			}).Error("Error setting up consumer.")
+
+			if c.conn.IsConnected() {
+				// This may occur when queue was deleted manually on RabbitMQ, or RabbitMQ lost queues.
+				logger.Info("Trying to setup topology.")
+
+				err = c.setupTopology()
+
+				if err != nil {
+					logger.WithFields(log.Fields{
+						"error": err,
+					}).Error("Error setting up topology.")
+				}
+			}
 
 			continue
 		}
