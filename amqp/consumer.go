@@ -74,6 +74,12 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 
 // NewConsumerConfig returns a new AMQP Consumer.
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
 	consumer := &consumer{
 		config:          config,
 		conn:            c.(*Connection),
@@ -81,10 +87,10 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 		handlers:        make([]handler, 0),
 		exchangeName:    exchange,
 		queueName:       queue,
-		consumerTagName: fmt.Sprintf("ctag-%s-%s-%d", os.Hostname(), os.Args[0], atomic.AddUint64(&consumerTagSeq, 1)),
+		consumerTagName: fmt.Sprintf("ctag-%s-%s-%d", hostname, os.Args[0], atomic.AddUint64(&consumerTagSeq, 1)),
 	}
 
-	err := consumer.setupTopology()
+	err = consumer.setupTopology()
 
 	if err != nil {
 		return nil, err
