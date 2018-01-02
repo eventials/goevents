@@ -6,9 +6,11 @@ import (
 	"github.com/eventials/goevents/messaging"
 	log "github.com/sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,11 +44,13 @@ type consumer struct {
 	queue      *amqplib.Queue
 	retryQueue *amqplib.Queue
 
-	exchangeName string
-	queueName    string
-
-	closed bool
+	exchangeName    string
+	queueName       string
+	consumerTagName string
+	closed          bool
 }
+
+var consumerTagSeq uint64
 
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
@@ -71,12 +75,13 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 // NewConsumerConfig returns a new AMQP Consumer.
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
 	consumer := &consumer{
-		config:       config,
-		conn:         c.(*Connection),
-		autoAck:      autoAck,
-		handlers:     make([]handler, 0),
-		exchangeName: exchange,
-		queueName:    queue,
+		config:          config,
+		conn:            c.(*Connection),
+		autoAck:         autoAck,
+		handlers:        make([]handler, 0),
+		exchangeName:    exchange,
+		queueName:       queue,
+		consumerTagName: fmt.Sprintf("ctag-%s-%s-%d", os.Hostname(), os.Args[0], atomic.AddUint64(&consumerTagSeq, 1)),
 	}
 
 	err := consumer.setupTopology()
@@ -466,13 +471,13 @@ func (c *consumer) Consume() {
 		}).Debug("Setting up consumer channel...")
 
 		msgs, err := c.channel.Consume(
-			c.queueName, // queue
-			"",          // consumer
-			c.autoAck,   // auto ack
-			false,       // exclusive
-			false,       // no local
-			false,       // no wait
-			nil,         // args
+			c.queueName,       // queue
+			c.consumerTagName, // consumer
+			c.autoAck,         // auto ack
+			false,             // exclusive
+			false,             // no local
+			false,             // no wait
+			nil,               // args
 		)
 
 		if err != nil {
