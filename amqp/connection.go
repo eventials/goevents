@@ -79,7 +79,7 @@ func (c *Connection) Consumer(autoAck bool, exchange, queue string) (messaging.C
 	return NewConsumer(c, autoAck, exchange, queue)
 }
 
-// OpenChannel returns an AMQP Consumer.
+// OpenChannel returns an AMQP Channel.
 func (c *Connection) OpenChannel() (*amqplib.Channel, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
