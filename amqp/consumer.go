@@ -37,7 +37,7 @@ type consumer struct {
 	m  sync.Mutex
 	wg sync.WaitGroup
 
-	conn     *Connection
+	conn     *connection
 	autoAck  bool
 	handlers []handler
 
@@ -84,7 +84,7 @@ func createUniqueConsumerTagName() string {
 func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
 	consumer := &consumer{
 		config:       config,
-		conn:         c.(*Connection),
+		conn:         c.(*connection),
 		autoAck:      autoAck,
 		handlers:     make([]handler, 0),
 		exchangeName: exchange,
@@ -138,19 +138,13 @@ func (c *consumer) setupTopology() (err error) {
 		}
 	}()
 
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
 	}
 
 	defer channel.Close()
-
-	err = channel.Qos(c.config.PrefetchCount, 0, true)
-
-	if err != nil {
-		return err
-	}
 
 	err = channel.ExchangeDeclare(
 		c.exchangeName, // name
@@ -303,7 +297,7 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 }
 
 func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
@@ -392,7 +386,7 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		return err
 	}
 
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
@@ -434,7 +428,7 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 
 // Unsubscribe allows to unsubscribe an action handler.
 func (c *consumer) Unsubscribe(action string) error {
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
@@ -474,13 +468,19 @@ func (c *consumer) doConsume() error {
 		"queue": c.queueName,
 	}).Debug("Setting up consumer channel...")
 
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
 	}
 
 	defer channel.Close()
+
+	err = channel.Qos(c.config.PrefetchCount, 0, true)
+
+	if err != nil {
+		return err
+	}
 
 	msgs, err := channel.Consume(
 		c.queueName,                   // queue

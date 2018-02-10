@@ -11,7 +11,7 @@ import (
 )
 
 // Connection with an AMQP peer.
-type Connection struct {
+type connection struct {
 	config     ConnectionConfig
 	m          sync.Mutex
 	url        string
@@ -29,15 +29,15 @@ type ConnectionConfig struct {
 
 // NewConnection returns an AMQP Connection.
 // Uses a default ConnectionConfig with 2 second of reconnect interval.
-func NewConnection(url string) (messaging.Connection, error) {
+func NewConnection(url string) (*connection, error) {
 	return NewConnectionConfig(url, ConnectionConfig{
 		reconnectInterval: 2 * time.Second,
 	})
 }
 
 // NewConnectionConfig returns an AMQP Connection.
-func NewConnectionConfig(url string, config ConnectionConfig) (messaging.Connection, error) {
-	connection := &Connection{
+func NewConnectionConfig(url string, config ConnectionConfig) (*connection, error) {
+	connection := &connection{
 		url:    url,
 		config: config,
 	}
@@ -56,7 +56,7 @@ func NewConnectionConfig(url string, config ConnectionConfig) (messaging.Connect
 }
 
 // NotifyConnectionClose returns a channel to notify when the connection closes.
-func (c *Connection) NotifyConnectionClose() <-chan error {
+func (c *connection) NotifyConnectionClose() <-chan error {
 	ch := make(chan error)
 
 	go func() {
@@ -67,7 +67,7 @@ func (c *Connection) NotifyConnectionClose() <-chan error {
 }
 
 // NotifyReestablish returns a channel to notify when the connection is restablished.
-func (c *Connection) NotifyReestablish() <-chan bool {
+func (c *connection) NotifyReestablish() <-chan bool {
 	receiver := make(chan bool)
 	c.reestablishs = append(c.reestablishs, receiver)
 
@@ -75,12 +75,12 @@ func (c *Connection) NotifyReestablish() <-chan bool {
 }
 
 // Consumer returns an AMQP Consumer.
-func (c *Connection) Consumer(autoAck bool, exchange, queue string) (messaging.Consumer, error) {
+func (c *connection) Consumer(autoAck bool, exchange, queue string) (messaging.Consumer, error) {
 	return NewConsumer(c, autoAck, exchange, queue)
 }
 
 // OpenChannel returns an AMQP Channel.
-func (c *Connection) OpenChannel() (*amqplib.Channel, error) {
+func (c *connection) openChannel() (*amqplib.Channel, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -88,12 +88,12 @@ func (c *Connection) OpenChannel() (*amqplib.Channel, error) {
 }
 
 // Producer returns an AMQP Producer.
-func (c *Connection) Producer(exchange string) (messaging.Producer, error) {
+func (c *connection) Producer(exchange string) (messaging.Producer, error) {
 	return NewProducer(c, exchange)
 }
 
 // Close closes the AMQP connection.
-func (c *Connection) Close() {
+func (c *connection) Close() {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -101,7 +101,7 @@ func (c *Connection) Close() {
 	c.connection.Close()
 }
 
-func (c *Connection) IsConnected() bool {
+func (c *connection) IsConnected() bool {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -109,11 +109,11 @@ func (c *Connection) IsConnected() bool {
 }
 
 // WaitUntilConnectionCloses holds the execution until the connection closes.
-func (c *Connection) WaitUntilConnectionCloses() {
+func (c *connection) WaitUntilConnectionCloses() {
 	<-c.NotifyConnectionClose()
 }
 
-func (c *Connection) dial() error {
+func (c *connection) dial() error {
 	conn, err := amqplib.Dial(c.url)
 
 	c.m.Lock()
@@ -124,14 +124,14 @@ func (c *Connection) dial() error {
 	return err
 }
 
-func (c *Connection) setConnected(connected bool) {
+func (c *connection) setConnected(connected bool) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
 	c.connected = connected
 }
 
-func (c *Connection) handleConnectionClose() {
+func (c *connection) handleConnectionClose() {
 	for !c.closed {
 		c.WaitUntilConnectionCloses()
 		c.setConnected(false)

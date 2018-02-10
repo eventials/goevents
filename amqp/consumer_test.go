@@ -2,10 +2,11 @@ package amqp
 
 import (
 	"fmt"
-	"github.com/eventials/goevents/messaging"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/eventials/goevents/messaging"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSubscribeActions(t *testing.T) {
@@ -18,13 +19,19 @@ func TestSubscribeActions(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeActions")
 
 	if assert.Nil(t, err) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action_1", func(e messaging.Event) error {
 			func1 <- true
@@ -63,13 +70,19 @@ func TestSubscribeWildcardActions(t *testing.T) {
 	if assert.Nil(t, err) {
 		defer conn.Close()
 
+		channel, err := conn.openChannel()
+
+		assert.Nil(t, err)
+
+		defer channel.Close()
+
 		c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeWildcardActions")
 
 		if assert.Nil(t, err) {
 			defer c.Close()
 
 			// Clean all messages if any...
-			c.channel.QueuePurge(c.queueName, false)
+			channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.*", func(e messaging.Event) error {
 				func1 <- true
@@ -114,8 +127,14 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer c.Close()
 
+			channel, err := conn.openChannel()
+
+			assert.Nil(t, err)
+
+			defer channel.Close()
+
 			// Clean all messages if any...
-			c.channel.QueuePurge(c.queueName, false)
+			channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.*", func(e messaging.Event) error {
 				func1 <- true
@@ -160,8 +179,14 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer c.Close()
 
+			channel, err := conn.openChannel()
+
+			assert.Nil(t, err)
+
+			defer channel.Close()
+
 			// Clean all messages if any...
-			c.channel.QueuePurge(c.queueName, false)
+			channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("webinar.state_changed", func(e messaging.Event) error {
 				func1 <- true
@@ -205,8 +230,14 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer c.Close()
 
+			channel, err := conn.openChannel()
+
+			assert.Nil(t, err)
+
+			defer channel.Close()
+
 			// Clean all messages if any...
-			c.channel.QueuePurge(c.queueName, false)
+			channel.QueuePurge(c.queueName, false)
 
 			c.Subscribe("my_action", func(e messaging.Event) error {
 				defer func() { timesCalled++ }()
@@ -243,13 +274,19 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfFailsToProcess")
 
 	if assert.Nil(t, err) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
@@ -289,13 +326,19 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageIfPanicsToProcess")
 
 	if assert.Nil(t, err) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
@@ -336,6 +379,12 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c1, err := NewConsumer(conn, false, "webhooks", "TestRetryMessageToTheSameQueue_1")
 	assert.Nil(t, err)
 
@@ -346,9 +395,9 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	defer c2.Close()
 
 	// Clean all messages if any...
-	c1.channel.QueuePurge(c1.queueName, false)
+	channel.QueuePurge(c1.queueName, false)
 
-	c2.channel.QueuePurge(c2.queueName, false)
+	channel.QueuePurge(c2.queueName, false)
 
 	c1.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled2++
@@ -394,13 +443,19 @@ func TestActionExitsMaxRetries(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetries")
 	assert.Nil(t, err)
 
 	defer c.Close()
 
 	// Clean all messages if any...
-	c.channel.QueuePurge(c.queueName, false)
+	channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try five times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -435,13 +490,19 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetriesWhenDelayed")
 	assert.Nil(t, err)
 
 	defer c.Close()
 
 	// Clean all messages if any...
-	c.channel.QueuePurge(c.queueName, false)
+	channel.QueuePurge(c.queueName, false)
 
 	// It runs once and get an error, it will try three times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
@@ -476,12 +537,18 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetriesWhenDelayed")
 	if assert.Nil(t, err) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		// It runs once and get an error, it will try three times more until it stops.
 		c.Subscribe("my_action", func(e messaging.Event) error {
@@ -518,6 +585,12 @@ func TestActionRetryTimeout(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumerConfig(conn, false, "webhooks", "TestActionRetryTimeout", ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        1,
@@ -527,7 +600,7 @@ func TestActionRetryTimeout(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("test1", func(e messaging.Event) error {
 			defer func() {
@@ -576,6 +649,12 @@ func TestConsumePrefetch(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumerConfig(conn, false, "webhooks", "TestConsumePrefetch", ConsumerConfig{
 		PrefetchCount:        5,
 		ConsumeRetryInterval: 15 * time.Second,
@@ -586,7 +665,7 @@ func TestConsumePrefetch(t *testing.T) {
 	defer c.Close()
 
 	// Clean all messages if any...
-	c.channel.QueuePurge(c.queueName, false)
+	channel.QueuePurge(c.queueName, false)
 
 	c.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled++
@@ -636,6 +715,12 @@ func TestBlankQueueWithPrefix(t *testing.T) {
 
 	defer conn.Close()
 
+	channel, err := conn.openChannel()
+
+	assert.Nil(t, err)
+
+	defer channel.Close()
+
 	c, err := NewConsumerConfig(conn, false, "webhooks", "", ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        1,
@@ -646,7 +731,7 @@ func TestBlankQueueWithPrefix(t *testing.T) {
 		defer c.Close()
 
 		// Clean all messages if any...
-		c.channel.QueuePurge(c.queueName, false)
+		channel.QueuePurge(c.queueName, false)
 
 		c.Subscribe("test1", func(e messaging.Event) error {
 			defer func() {
