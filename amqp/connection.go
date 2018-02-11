@@ -113,6 +113,11 @@ func (c *connection) WaitUntilConnectionCloses() {
 	<-c.NotifyConnectionClose()
 }
 
+// WaitUntilConnectionReestablished holds the execution until the connection reestablished.
+func (c *connection) WaitUntilConnectionReestablished() {
+	<-c.NotifyReestablish()
+}
+
 func (c *connection) dial() error {
 	conn, err := amqplib.Dial(c.url)
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -22,11 +21,15 @@ func main() {
 	consumerA, err := amqp.NewConsumerConfig(conn, false, "events-exchange", "events-queue-a", amqp.ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        1,
+		DurableQueue:         true,
+		AutoDelete:           false,
 	})
 
 	if err != nil {
 		panic(err)
 	}
+
+	defer consumerA.Close()
 
 	consumerA.Subscribe("object.eventA", func(e messaging.Event) error {
 		fmt.Println("object.eventA:", string(e.Body))
@@ -56,11 +59,15 @@ func main() {
 		MaxRetries:   10,
 	})
 
+	go consumerA.Consume()
+
 	consumerB, err := conn.Consumer(false, "events-exchange", "events-queue-b")
 
 	if err != nil {
 		panic(err)
 	}
+
+	defer consumerB.Close()
 
 	consumerB.Subscribe("object.eventC", func(e messaging.Event) error {
 		fmt.Println("object.eventC:", string(e.Body))
@@ -72,26 +79,10 @@ func main() {
 		return nil
 	}, nil)
 
-	var wg sync.WaitGroup
-
-	go func() {
-		wg.Add(1)
-		consumerA.Consume()
-		wg.Done()
-	}()
-
-	go func() {
-		wg.Add(1)
-		consumerB.Consume()
-		wg.Done()
-	}()
+	go consumerB.Consume()
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	<-sigc
-	consumerA.Close()
-	consumerB.Close()
-
-	wg.Wait()
 }

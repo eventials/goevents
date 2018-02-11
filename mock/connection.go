@@ -41,6 +41,10 @@ func (c *Connection) WaitUntilConnectionCloses() {
 	c.Called()
 }
 
+func (c *Connection) WaitUntilConnectionReestablished() {
+	c.Called()
+}
+
 func (c *Connection) IsConnected() bool {
 	args := c.Called()
 	return args.Get(0).(bool)

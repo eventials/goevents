@@ -41,9 +41,6 @@ type consumer struct {
 	autoAck  bool
 	handlers []handler
 
-	queue      *amqplib.Queue
-	retryQueue *amqplib.Queue
-
 	exchangeName string
 	queueName    string
 	closed       bool
@@ -91,15 +88,9 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 		queueName:    queue,
 	}
 
-	err := consumer.setupTopology()
-
-	if err != nil {
-		return nil, err
-	}
-
 	go consumer.handleReestablishedConnnection()
 
-	return consumer, err
+	return consumer, nil
 
 }
 
@@ -122,10 +113,8 @@ func (c *consumer) uniqueNameWithPrefix() string {
 	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
 }
 
-func (c *consumer) setupTopology() (err error) {
-	c.m.Lock()
+func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
 	defer func() {
-		c.m.Unlock()
 		if r := recover(); r != nil {
 			switch x := r.(type) {
 			case string:
@@ -138,13 +127,11 @@ func (c *consumer) setupTopology() (err error) {
 		}
 	}()
 
-	channel, err := c.conn.openChannel()
+	err = channel.Qos(c.config.PrefetchCount, 0, true)
 
 	if err != nil {
 		return err
 	}
-
-	defer channel.Close()
 
 	err = channel.ExchangeDeclare(
 		c.exchangeName, // name
@@ -164,7 +151,7 @@ func (c *consumer) setupTopology() (err error) {
 		c.queueName = c.uniqueNameWithPrefix()
 	}
 
-	q, err := channel.QueueDeclare(
+	_, err = channel.QueueDeclare(
 		c.queueName,           // name
 		c.config.DurableQueue, // durable
 		c.config.AutoDelete,   // auto-delete
@@ -177,22 +164,12 @@ func (c *consumer) setupTopology() (err error) {
 		return err
 	}
 
-	c.queue = &q
-
 	return nil
 }
 
 func (c *consumer) handleReestablishedConnnection() {
 	for !c.closed {
 		<-c.conn.NotifyReestablish()
-
-		err := c.setupTopology()
-
-		if err != nil {
-			logger.WithFields(log.Fields{
-				"error": err,
-			}).Error("Error setting up topology after reconnection.")
-		}
 	}
 }
 
@@ -476,7 +453,7 @@ func (c *consumer) doConsume() error {
 
 	defer channel.Close()
 
-	err = channel.Qos(c.config.PrefetchCount, 0, true)
+	err = c.setupTopology(channel)
 
 	if err != nil {
 		return err
@@ -524,9 +501,9 @@ func (c *consumer) Consume() {
 
 	for !c.closed {
 		if !c.conn.IsConnected() {
-			logger.Infof("Connection not established. Retrying in %s", c.config.ConsumeRetryInterval)
+			logger.Info("Connection not established. Waiting connection to be reestablished.")
 
-			time.Sleep(c.config.ConsumeRetryInterval)
+			c.conn.WaitUntilConnectionReestablished()
 
 			continue
 		}
@@ -543,19 +520,6 @@ func (c *consumer) Consume() {
 				"queue": c.queueName,
 				"error": err,
 			}).Error("Error consuming events.")
-
-			if c.conn.IsConnected() {
-				// This may occur when queue was deleted manually on RabbitMQ, or RabbitMQ lost queues.
-				logger.Info("Trying to setup topology.")
-
-				err = c.setupTopology()
-
-				if err != nil {
-					logger.WithFields(log.Fields{
-						"error": err,
-					}).Error("Error setting up topology.")
-				}
-			}
 		}
 	}
 }
