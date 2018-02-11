@@ -3,15 +3,16 @@ package amqp
 import (
 	"errors"
 	"fmt"
-	"github.com/eventials/goevents/messaging"
-	log "github.com/sirupsen/logrus"
-	amqplib "github.com/streadway/amqp"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/eventials/goevents/messaging"
+	log "github.com/sirupsen/logrus"
+	amqplib "github.com/streadway/amqp"
 )
 
 var (
@@ -36,18 +37,16 @@ type consumer struct {
 	m  sync.Mutex
 	wg sync.WaitGroup
 
-	conn     *Connection
+	conn     *connection
 	autoAck  bool
 	handlers []handler
 
-	channel    *amqplib.Channel
 	queue      *amqplib.Queue
 	retryQueue *amqplib.Queue
 
-	exchangeName    string
-	queueName       string
-	consumerTagName string
-	closed          bool
+	exchangeName string
+	queueName    string
+	closed       bool
 }
 
 var consumerTagSeq uint64
@@ -72,25 +71,27 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 	})
 }
 
-// NewConsumerConfig returns a new AMQP Consumer.
-func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
-
+func createUniqueConsumerTagName() string {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
 
+	return fmt.Sprintf("ctag-%s-%s-%d", hostname, os.Args[0], atomic.AddUint64(&consumerTagSeq, 1))
+}
+
+// NewConsumerConfig returns a new AMQP Consumer.
+func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue string, config ConsumerConfig) (*consumer, error) {
 	consumer := &consumer{
-		config:          config,
-		conn:            c.(*Connection),
-		autoAck:         autoAck,
-		handlers:        make([]handler, 0),
-		exchangeName:    exchange,
-		queueName:       queue,
-		consumerTagName: fmt.Sprintf("ctag-%s-%s-%d", hostname, os.Args[0], atomic.AddUint64(&consumerTagSeq, 1)),
+		config:       config,
+		conn:         c.(*connection),
+		autoAck:      autoAck,
+		handlers:     make([]handler, 0),
+		exchangeName: exchange,
+		queueName:    queue,
 	}
 
-	err = consumer.setupTopology()
+	err := consumer.setupTopology()
 
 	if err != nil {
 		return nil, err
@@ -111,7 +112,6 @@ func (c *consumer) Close() {
 		c.handlers = make([]handler, 0)
 
 		c.closed = true
-		c.channel.Close()
 	}()
 
 	// Wait all go routine finish.
@@ -138,23 +138,15 @@ func (c *consumer) setupTopology() (err error) {
 		}
 	}()
 
-	if c.channel != nil {
-		c.channel.Close()
-	}
-
-	c.channel, err = c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
 	}
 
-	err = c.channel.Qos(c.config.PrefetchCount, 0, true)
+	defer channel.Close()
 
-	if err != nil {
-		return err
-	}
-
-	err = c.channel.ExchangeDeclare(
+	err = channel.ExchangeDeclare(
 		c.exchangeName, // name
 		"topic",        // type
 		true,           // durable
@@ -172,7 +164,7 @@ func (c *consumer) setupTopology() (err error) {
 		c.queueName = c.uniqueNameWithPrefix()
 	}
 
-	q, err := c.channel.QueueDeclare(
+	q, err := channel.QueueDeclare(
 		c.queueName,           // name
 		c.config.DurableQueue, // durable
 		c.config.AutoDelete,   // auto-delete
@@ -305,7 +297,7 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 }
 
 func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
-	channel, err := c.conn.OpenChannel()
+	channel, err := c.conn.openChannel()
 
 	if err != nil {
 		return err
@@ -394,7 +386,15 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		return err
 	}
 
-	err = c.channel.QueueBind(
+	channel, err := c.conn.openChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	err = channel.QueueBind(
 		c.queueName,    // queue name
 		action,         // routing key
 		c.exchangeName, // exchange
@@ -428,7 +428,15 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 
 // Unsubscribe allows to unsubscribe an action handler.
 func (c *consumer) Unsubscribe(action string) error {
-	err := c.channel.QueueUnbind(
+	channel, err := c.conn.openChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	err = channel.QueueUnbind(
 		c.queueName,    // queue name
 		action,         // routing key
 		c.exchangeName, // exchange
@@ -455,6 +463,57 @@ func (c *consumer) Unsubscribe(action string) error {
 	return nil
 }
 
+func (c *consumer) doConsume() error {
+	logger.WithFields(log.Fields{
+		"queue": c.queueName,
+	}).Debug("Setting up consumer channel...")
+
+	channel, err := c.conn.openChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	err = channel.Qos(c.config.PrefetchCount, 0, true)
+
+	if err != nil {
+		return err
+	}
+
+	msgs, err := channel.Consume(
+		c.queueName,                   // queue
+		createUniqueConsumerTagName(), // consumer
+		c.autoAck,                     // auto ack
+		false,                         // exclusive
+		false,                         // no local
+		false,                         // no wait
+		nil,                           // args
+	)
+
+	if err != nil {
+		return err
+	}
+
+	logger.WithFields(log.Fields{
+		"queue": c.queueName,
+	}).Info("Consuming messages...")
+
+	for m := range msgs {
+		logger.Info("Received from channel.")
+
+		c.wg.Add(1)
+
+		go func(msg amqplib.Delivery) {
+			c.dispatch(msg)
+			c.wg.Done()
+		}(m)
+	}
+
+	return nil
+}
+
 // Listen start to listen for new messages.
 func (c *consumer) Consume() {
 	logger.Info("Registered handlers:")
@@ -465,32 +524,25 @@ func (c *consumer) Consume() {
 
 	for !c.closed {
 		if !c.conn.IsConnected() {
-			logger.Info("Connection not established.")
+			logger.Infof("Connection not established. Retrying in %s", c.config.ConsumeRetryInterval)
 
 			time.Sleep(c.config.ConsumeRetryInterval)
 
 			continue
 		}
 
-		logger.WithFields(log.Fields{
-			"queue": c.queueName,
-		}).Debug("Setting up consumer channel...")
+		err := c.doConsume()
 
-		msgs, err := c.channel.Consume(
-			c.queueName,       // queue
-			c.consumerTagName, // consumer
-			c.autoAck,         // auto ack
-			false,             // exclusive
-			false,             // no local
-			false,             // no wait
-			nil,               // args
-		)
-
-		if err != nil {
+		if err == nil {
+			logger.WithFields(log.Fields{
+				"queue":  c.queueName,
+				"closed": c.closed,
+			}).Info("Consumption finished.")
+		} else {
 			logger.WithFields(log.Fields{
 				"queue": c.queueName,
 				"error": err,
-			}).Error("Error setting up consumer.")
+			}).Error("Error consuming events.")
 
 			if c.conn.IsConnected() {
 				// This may occur when queue was deleted manually on RabbitMQ, or RabbitMQ lost queues.
@@ -504,29 +556,7 @@ func (c *consumer) Consume() {
 					}).Error("Error setting up topology.")
 				}
 			}
-
-			continue
 		}
-
-		logger.WithFields(log.Fields{
-			"queue": c.queueName,
-		}).Info("Consuming messages...")
-
-		for m := range msgs {
-			logger.Info("Received from channel.")
-
-			c.wg.Add(1)
-
-			go func(msg amqplib.Delivery) {
-				c.dispatch(msg)
-				c.wg.Done()
-			}(m)
-		}
-
-		logger.WithFields(log.Fields{
-			"queue":  c.queueName,
-			"closed": c.closed,
-		}).Info("Consumption finished.")
 	}
 }
 

@@ -3,9 +3,10 @@ package amqp
 import (
 	"errors"
 	"fmt"
-	"github.com/eventials/goevents/messaging"
 	"sync"
 	"time"
+
+	"github.com/eventials/goevents/messaging"
 
 	log "github.com/sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
@@ -23,7 +24,7 @@ type message struct {
 // producer holds a amqp connection and channel to publish messages to.
 type producer struct {
 	m    sync.Mutex
-	conn *Connection
+	conn *connection
 
 	config ProducerConfig
 
@@ -54,7 +55,7 @@ func NewProducer(c messaging.Connection, exchange string) (*producer, error) {
 // NewProducerConfig returns a new AMQP Producer.
 func NewProducerConfig(c messaging.Connection, exchange string, config ProducerConfig) (*producer, error) {
 	producer := &producer{
-		conn:          c.(*Connection),
+		conn:          c.(*connection),
 		config:        config,
 		internalQueue: make(chan message),
 		exchangeName:  exchange,
@@ -118,7 +119,7 @@ func (p *producer) setupTopology() error {
 	defer p.m.Unlock()
 
 	if p.exchangeName != "" {
-		channel, err := p.conn.OpenChannel()
+		channel, err := p.conn.openChannel()
 
 		if err != nil {
 			return err
@@ -171,7 +172,7 @@ func (p *producer) handleReestablishedConnnection() {
 }
 
 func (p *producer) publishMessage(msg amqplib.Publishing, queue string) error {
-	channel, err := p.conn.OpenChannel()
+	channel, err := p.conn.openChannel()
 
 	if err != nil {
 		return err
