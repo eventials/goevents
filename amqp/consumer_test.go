@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	SleepSetupTopology = 300 * time.Millisecond
+)
+
 var conn *connection
 
 func TestMain(m *testing.M) {
@@ -63,6 +67,9 @@ func TestSubscribeActions(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		assert.Nil(t, err)
@@ -73,7 +80,7 @@ func TestSubscribeActions(t *testing.T) {
 		case <-func1:
 		case <-func2:
 			assert.Fail(t, "called wrong action")
-		case <-time.After(1 * time.Second):
+		case <-time.After(3 * time.Second):
 			assert.Fail(t, "timed out")
 		}
 	}
@@ -102,6 +109,9 @@ func TestSubscribeWildcardActions(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		assert.Nil(t, err)
@@ -112,7 +122,7 @@ func TestSubscribeWildcardActions(t *testing.T) {
 		case <-func1:
 		case <-func2:
 			assert.Fail(t, "called wrong action")
-		case <-time.After(1 * time.Second):
+		case <-time.After(3 * time.Second):
 			assert.Fail(t, "timed out")
 		}
 	}
@@ -142,6 +152,9 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -153,7 +166,7 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 			case <-func1:
 			case <-func2:
 				assert.Fail(t, "called wrong action")
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.Fail(t, "timed out")
 			}
 		}
@@ -183,6 +196,9 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -194,7 +210,7 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 			case <-func1:
 			case <-func2:
 				assert.Fail(t, "called wrong action")
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.Fail(t, "timed out")
 			}
 		}
@@ -223,6 +239,9 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -231,7 +250,7 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 			p.Publish("my_action", []byte(""))
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.Equal(t, 1, timesCalled, "Consumer got wrong quantity of messages.")
 			}
 		}
@@ -264,6 +283,9 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -272,7 +294,7 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 			p.Publish("my_action", []byte(""))
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.True(t, timesCalled >= 1 || timesCalled <= 5, "Consumer got wrong quantity of messages.")
 			}
 		}
@@ -305,6 +327,9 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -313,7 +338,7 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 			p.Publish("my_action", []byte(""))
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
 			}
 		}
@@ -333,8 +358,8 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	defer c1.Close()
 	defer c2.Close()
 
-	assert.Nil(t, clearQueue(conn, c1.queueName))
-	assert.Nil(t, clearQueue(conn, c2.queueName))
+	clearQueue(conn, c1.queueName)
+	clearQueue(conn, c2.queueName)
 
 	c1.Subscribe("my_action", func(e messaging.Event) error {
 		timesCalled2++
@@ -356,7 +381,14 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	})
 
 	go c1.Consume()
+
+	// take a time to setup topology
+	time.Sleep(SleepSetupTopology)
+
 	go c2.Consume()
+
+	// take a time to setup topology
+	time.Sleep(SleepSetupTopology)
 
 	p, err := NewProducer(conn, "webhooks")
 
@@ -366,7 +398,7 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 		p.Publish("my_action", []byte(""))
 
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(3 * time.Second):
 			assert.Equal(t, 2, timesCalled1, "Consumer 1 got wrong quantity of messages.")
 			assert.Equal(t, 1, timesCalled2, "Consumer 2 got wrong quantity of messages.")
 		}
@@ -395,6 +427,9 @@ func TestActionExitsMaxRetries(t *testing.T) {
 
 	go c.Consume()
 
+	// take a time to setup topology
+	time.Sleep(SleepSetupTopology)
+
 	p, err := NewProducer(conn, "webhooks")
 
 	if assert.Nil(t, err) {
@@ -403,44 +438,47 @@ func TestActionExitsMaxRetries(t *testing.T) {
 		p.Publish("my_action", []byte(""))
 
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(3 * time.Second):
 			assert.True(t, timesCalled >= 4 || timesCalled <= 6, "Consumer got wrong quantity of messages.")
 		}
 	}
 }
 
 func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
-	timesCalled := 0
-
 	c, err := NewConsumer(conn, false, "webhooks", "TestActionExitsMaxRetriesWhenDelayed")
-	assert.Nil(t, err)
-
-	defer c.Close()
-
-	clearQueue(conn, c.queueName)
-
-	// It runs once and get an error, it will try three times more until it stops.
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
-	}, &messaging.SubscribeOptions{
-		RetryDelay:   100 * time.Millisecond,
-		DelayedRetry: true,
-		MaxRetries:   3,
-	})
-
-	go c.Consume()
-
-	p, err := NewProducer(conn, "webhooks")
-
 	if assert.Nil(t, err) {
-		defer p.Close()
+		defer c.Close()
 
-		p.Publish("my_action", []byte(""))
+		clearQueue(conn, c.queueName)
 
-		select {
-		case <-time.After(1 * time.Second):
-			assert.True(t, timesCalled > 1 || timesCalled <= 4, "Consumer got wrong quantity of messages.")
+		timesCalled := 0
+
+		// It runs once and get an error, it will try three times more until it stops.
+		c.Subscribe("my_action", func(e messaging.Event) error {
+			defer func() { timesCalled++ }()
+			return fmt.Errorf("Error.")
+		}, &messaging.SubscribeOptions{
+			RetryDelay:   100 * time.Millisecond,
+			DelayedRetry: true,
+			MaxRetries:   3,
+		})
+
+		go c.Consume()
+
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
+		p, err := NewProducer(conn, "webhooks")
+
+		if assert.Nil(t, err) {
+			defer p.Close()
+
+			p.Publish("my_action", []byte(""))
+
+			select {
+			case <-time.After(3 * time.Second):
+				assert.True(t, timesCalled > 1 || timesCalled <= 4, "Consumer got wrong quantity of messages.")
+			}
 		}
 	}
 }
@@ -466,6 +504,9 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -474,7 +515,7 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 			p.Publish("my_action", []byte(""))
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(3 * time.Second):
 				assert.True(t, timesCalled > 1 || timesCalled <= 6, "Consumer got wrong quantity of messages.")
 			}
 		}
@@ -515,6 +556,9 @@ func TestActionRetryTimeout(t *testing.T) {
 
 		go c.Consume()
 
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
 		p, err := NewProducer(conn, "webhooks")
 
 		if assert.Nil(t, err) {
@@ -543,48 +587,53 @@ func TestConsumePrefetch(t *testing.T) {
 		ConsumeRetryInterval: 15 * time.Second,
 	})
 
-	assert.Nil(t, err)
+	if assert.Nil(t, err) {
+		defer c.Close()
 
-	defer c.Close()
+		clearQueue(conn, c.queueName)
 
-	clearQueue(conn, c.queueName)
+		c.Subscribe("my_action", func(e messaging.Event) error {
+			timesCalled++
+			<-wait
+			return nil
+		}, nil)
 
-	c.Subscribe("my_action", func(e messaging.Event) error {
-		timesCalled++
-		<-wait
-		return nil
-	}, nil)
+		go c.Consume()
 
-	go c.Consume()
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
 
-	p, err := NewProducer(conn, "webhooks")
+		p, err := NewProducer(conn, "webhooks")
 
-	assert.Nil(t, err)
+		if assert.Nil(t, err) {
+			defer p.Close()
 
-	for i := 0; i < 10; i++ {
-		p.Publish("my_action", []byte(""))
-	}
+			for i := 0; i < 10; i++ {
+				p.Publish("my_action", []byte(""))
+			}
 
-	<-time.After(100 * time.Millisecond)
-	assert.Equal(t, 5, timesCalled, "Consumer got wrong quantity of messages.")
+			<-time.After(100 * time.Millisecond)
+			assert.Equal(t, 5, timesCalled, "Consumer got wrong quantity of messages.")
 
-	// release one
-	wait <- true
+			// release one
+			wait <- true
 
-	<-time.After(100 * time.Millisecond)
-	assert.Equal(t, 6, timesCalled, "Consumer got wrong quantity of messages.")
+			<-time.After(100 * time.Millisecond)
+			assert.Equal(t, 6, timesCalled, "Consumer got wrong quantity of messages.")
 
-	// release all
-	for i := 0; i < 5; i++ {
-		wait <- true
-	}
+			// release all
+			for i := 0; i < 5; i++ {
+				wait <- true
+			}
 
-	<-time.After(100 * time.Millisecond)
-	assert.Equal(t, 10, timesCalled, "Consumer got wrong quantity of messages.")
+			<-time.After(100 * time.Millisecond)
+			assert.Equal(t, 10, timesCalled, "Consumer got wrong quantity of messages.")
 
-	// release all
-	for i := 0; i < 4; i++ {
-		wait <- true
+			// release all
+			for i := 0; i < 4; i++ {
+				wait <- true
+			}
+		}
 	}
 }
 
@@ -614,6 +663,9 @@ func TestBlankQueueWithPrefix(t *testing.T) {
 		})
 
 		go c.Consume()
+
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
 
 		p, err := NewProducer(conn, "webhooks")
 

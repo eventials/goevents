@@ -305,26 +305,6 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		return err
 	}
 
-	channel, err := c.conn.openChannel()
-
-	if err != nil {
-		return err
-	}
-
-	defer channel.Close()
-
-	err = channel.QueueBind(
-		c.queueName,    // queue name
-		action,         // routing key
-		c.exchangeName, // exchange
-		false,          // no-wait
-		nil,            // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
 	if options == nil {
 		options = &messaging.SubscribeOptions{
 			RetryDelay:   time.Duration(0),
@@ -382,6 +362,27 @@ func (c *consumer) Unsubscribe(action string) error {
 	return nil
 }
 
+func (c *consumer) bindActionToQueue(channel *amqplib.Channel, queueName string, action string) error {
+	return channel.QueueBind(
+		queueName,      // queue name
+		action,         // routing key
+		c.exchangeName, // exchange
+		false,          // no-wait
+		nil,            // arguments
+	)
+}
+
+func (c *consumer) bindAllActionsQueue(channel *amqplib.Channel, queueName string) error {
+	for _, h := range c.handlers {
+		err := c.bindActionToQueue(channel, queueName, h.action)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
 	err = channel.Qos(c.config.PrefetchCount, 0, true)
 
@@ -425,7 +426,7 @@ func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
 		return err
 	}
 
-	return nil
+	return c.bindAllActionsQueue(channel, c.queueName)
 }
 
 func (c *consumer) doConsume() error {
