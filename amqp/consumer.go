@@ -52,8 +52,6 @@ var consumerTagSeq uint64
 type ConsumerConfig struct {
 	ConsumeRetryInterval time.Duration
 	PrefetchCount        int
-	DurableQueue         bool
-	AutoDelete           bool
 	PrefixName           string
 }
 
@@ -63,8 +61,6 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        0,
-		DurableQueue:         true,
-		AutoDelete:           false,
 	})
 }
 
@@ -113,63 +109,9 @@ func (c *consumer) uniqueNameWithPrefix() string {
 	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
 }
 
-func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			switch x := r.(type) {
-			case string:
-				err = errors.New(x)
-			case error:
-				err = x
-			default:
-				err = errors.New("Unknown panic")
-			}
-		}
-	}()
-
-	err = channel.Qos(c.config.PrefetchCount, 0, true)
-
-	if err != nil {
-		return err
-	}
-
-	err = channel.ExchangeDeclare(
-		c.exchangeName, // name
-		"topic",        // type
-		true,           // durable
-		false,          // auto-delete
-		false,          // internal
-		false,          // no-wait
-		nil,            // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
-	if c.config.PrefixName != "" {
-		c.queueName = c.uniqueNameWithPrefix()
-	}
-
-	_, err = channel.QueueDeclare(
-		c.queueName,           // name
-		c.config.DurableQueue, // durable
-		c.config.AutoDelete,   // auto-delete
-		false,                 // exclusive
-		false,                 // no-wait
-		nil,                   // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (c *consumer) handleReestablishedConnnection() {
 	for !c.closed {
-		<-c.conn.NotifyReestablish()
+		c.conn.WaitUntilConnectionReestablished()
 	}
 }
 
@@ -440,6 +382,52 @@ func (c *consumer) Unsubscribe(action string) error {
 	return nil
 }
 
+func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
+	err = channel.Qos(c.config.PrefetchCount, 0, true)
+
+	if err != nil {
+		return err
+	}
+
+	err = channel.ExchangeDeclare(
+		c.exchangeName, // name
+		"topic",        // type
+		true,           // durable
+		false,          // auto-delete
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
+	)
+
+	if err != nil {
+		return err
+	}
+
+	durable := true
+	exclusive := false
+
+	if c.config.PrefixName != "" {
+		c.queueName = c.uniqueNameWithPrefix()
+		durable = false
+		exclusive = true
+	}
+
+	_, err = channel.QueueDeclare(
+		c.queueName, // name
+		durable,     // durable
+		false,       // auto-delete
+		exclusive,   // exclusive
+		false,       // no-wait
+		nil,         // arguments
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *consumer) doConsume() error {
 	logger.WithFields(log.Fields{
 		"queue": c.queueName,
@@ -478,8 +466,6 @@ func (c *consumer) doConsume() error {
 	}).Info("Consuming messages...")
 
 	for m := range msgs {
-		logger.Info("Received from channel.")
-
 		c.wg.Add(1)
 
 		go func(msg amqplib.Delivery) {

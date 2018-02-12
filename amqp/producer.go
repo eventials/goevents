@@ -140,10 +140,6 @@ func (p *producer) setupTopology() error {
 		if err != nil {
 			return err
 		}
-
-		if err != nil {
-			return err
-		}
 	}
 
 	log.WithFields(log.Fields{
@@ -155,10 +151,8 @@ func (p *producer) setupTopology() error {
 }
 
 func (p *producer) handleReestablishedConnnection() {
-	reestablishChannel := p.conn.NotifyReestablish()
-
 	for !p.closed {
-		<-reestablishChannel
+		p.conn.WaitUntilConnectionReestablished()
 
 		err := p.setupTopology()
 
@@ -217,6 +211,7 @@ func (p *producer) drainInternalQueue() {
 				"message_id": m.msg.MessageId,
 				"type":       "goevents",
 				"sub_type":   "producer",
+				"exchange":   p.exchangeName,
 			}).Info("Publishing message to the exchange.")
 
 			err := p.publishMessage(m.msg, m.action)
