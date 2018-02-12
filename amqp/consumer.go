@@ -41,9 +41,6 @@ type consumer struct {
 	autoAck  bool
 	handlers []handler
 
-	queue      *amqplib.Queue
-	retryQueue *amqplib.Queue
-
 	exchangeName string
 	queueName    string
 	closed       bool
@@ -55,8 +52,6 @@ var consumerTagSeq uint64
 type ConsumerConfig struct {
 	ConsumeRetryInterval time.Duration
 	PrefetchCount        int
-	DurableQueue         bool
-	AutoDelete           bool
 	PrefixName           string
 }
 
@@ -66,8 +61,6 @@ func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
 		PrefetchCount:        0,
-		DurableQueue:         true,
-		AutoDelete:           false,
 	})
 }
 
@@ -91,15 +84,9 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 		queueName:    queue,
 	}
 
-	err := consumer.setupTopology()
-
-	if err != nil {
-		return nil, err
-	}
-
 	go consumer.handleReestablishedConnnection()
 
-	return consumer, err
+	return consumer, nil
 
 }
 
@@ -122,77 +109,9 @@ func (c *consumer) uniqueNameWithPrefix() string {
 	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
 }
 
-func (c *consumer) setupTopology() (err error) {
-	c.m.Lock()
-	defer func() {
-		c.m.Unlock()
-		if r := recover(); r != nil {
-			switch x := r.(type) {
-			case string:
-				err = errors.New(x)
-			case error:
-				err = x
-			default:
-				err = errors.New("Unknown panic")
-			}
-		}
-	}()
-
-	channel, err := c.conn.openChannel()
-
-	if err != nil {
-		return err
-	}
-
-	defer channel.Close()
-
-	err = channel.ExchangeDeclare(
-		c.exchangeName, // name
-		"topic",        // type
-		true,           // durable
-		false,          // auto-delete
-		false,          // internal
-		false,          // no-wait
-		nil,            // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
-	if c.config.PrefixName != "" {
-		c.queueName = c.uniqueNameWithPrefix()
-	}
-
-	q, err := channel.QueueDeclare(
-		c.queueName,           // name
-		c.config.DurableQueue, // durable
-		c.config.AutoDelete,   // auto-delete
-		false,                 // exclusive
-		false,                 // no-wait
-		nil,                   // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
-	c.queue = &q
-
-	return nil
-}
-
 func (c *consumer) handleReestablishedConnnection() {
 	for !c.closed {
-		<-c.conn.NotifyReestablish()
-
-		err := c.setupTopology()
-
-		if err != nil {
-			logger.WithFields(log.Fields{
-				"error": err,
-			}).Error("Error setting up topology after reconnection.")
-		}
+		c.conn.WaitUntilConnectionReestablished()
 	}
 }
 
@@ -386,26 +305,6 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		return err
 	}
 
-	channel, err := c.conn.openChannel()
-
-	if err != nil {
-		return err
-	}
-
-	defer channel.Close()
-
-	err = channel.QueueBind(
-		c.queueName,    // queue name
-		action,         // routing key
-		c.exchangeName, // exchange
-		false,          // no-wait
-		nil,            // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
 	if options == nil {
 		options = &messaging.SubscribeOptions{
 			RetryDelay:   time.Duration(0),
@@ -463,6 +362,73 @@ func (c *consumer) Unsubscribe(action string) error {
 	return nil
 }
 
+func (c *consumer) bindActionToQueue(channel *amqplib.Channel, queueName string, action string) error {
+	return channel.QueueBind(
+		queueName,      // queue name
+		action,         // routing key
+		c.exchangeName, // exchange
+		false,          // no-wait
+		nil,            // arguments
+	)
+}
+
+func (c *consumer) bindAllActionsQueue(channel *amqplib.Channel, queueName string) error {
+	for _, h := range c.handlers {
+		err := c.bindActionToQueue(channel, queueName, h.action)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
+	err = channel.Qos(c.config.PrefetchCount, 0, true)
+
+	if err != nil {
+		return err
+	}
+
+	err = channel.ExchangeDeclare(
+		c.exchangeName, // name
+		"topic",        // type
+		true,           // durable
+		false,          // auto-delete
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
+	)
+
+	if err != nil {
+		return err
+	}
+
+	durable := true
+	exclusive := false
+
+	if c.config.PrefixName != "" {
+		c.queueName = c.uniqueNameWithPrefix()
+		durable = false
+		exclusive = true
+	}
+
+	_, err = channel.QueueDeclare(
+		c.queueName, // name
+		durable,     // durable
+		false,       // auto-delete
+		exclusive,   // exclusive
+		false,       // no-wait
+		nil,         // arguments
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return c.bindAllActionsQueue(channel, c.queueName)
+}
+
 func (c *consumer) doConsume() error {
 	logger.WithFields(log.Fields{
 		"queue": c.queueName,
@@ -476,7 +442,7 @@ func (c *consumer) doConsume() error {
 
 	defer channel.Close()
 
-	err = channel.Qos(c.config.PrefetchCount, 0, true)
+	err = c.setupTopology(channel)
 
 	if err != nil {
 		return err
@@ -501,8 +467,6 @@ func (c *consumer) doConsume() error {
 	}).Info("Consuming messages...")
 
 	for m := range msgs {
-		logger.Info("Received from channel.")
-
 		c.wg.Add(1)
 
 		go func(msg amqplib.Delivery) {
@@ -524,9 +488,9 @@ func (c *consumer) Consume() {
 
 	for !c.closed {
 		if !c.conn.IsConnected() {
-			logger.Infof("Connection not established. Retrying in %s", c.config.ConsumeRetryInterval)
+			logger.Info("Connection not established. Waiting connection to be reestablished.")
 
-			time.Sleep(c.config.ConsumeRetryInterval)
+			c.conn.WaitUntilConnectionReestablished()
 
 			continue
 		}
@@ -543,19 +507,6 @@ func (c *consumer) Consume() {
 				"queue": c.queueName,
 				"error": err,
 			}).Error("Error consuming events.")
-
-			if c.conn.IsConnected() {
-				// This may occur when queue was deleted manually on RabbitMQ, or RabbitMQ lost queues.
-				logger.Info("Trying to setup topology.")
-
-				err = c.setupTopology()
-
-				if err != nil {
-					logger.WithFields(log.Fields{
-						"error": err,
-					}).Error("Error setting up topology.")
-				}
-			}
 		}
 	}
 }

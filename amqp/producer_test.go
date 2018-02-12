@@ -36,6 +36,9 @@ func TestPublish(t *testing.T) {
 
 				go c.Consume()
 
+				// take a time to setup topology
+				time.Sleep(SleepSetupTopology)
+
 				p, err := NewProducer(conn, "webhooks")
 
 				if assert.Nil(t, err) {
@@ -78,6 +81,9 @@ func TestPublishMultipleTimes(t *testing.T) {
 				}, nil)
 
 				go c.Consume()
+
+				// take a time to setup topology
+				time.Sleep(SleepSetupTopology)
 
 				p, err := NewProducer(conn, "webhooks")
 
