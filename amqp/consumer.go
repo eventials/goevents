@@ -160,9 +160,10 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 	}()
 
 	err = h.fn(messaging.Event{
-		Id:     msg.MessageId,
-		Action: h.action,
-		Body:   msg.Body,
+		Id:        msg.MessageId,
+		Action:    h.action,
+		Body:      msg.Body,
+		Timestamp: msg.Timestamp,
 	})
 
 	return
@@ -259,7 +260,7 @@ func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 			"x-retry-delay": delay.String(),
 			"x-action-key":  getAction(msg),
 		},
-		Timestamp:    time.Now(),
+		Timestamp:    msg.Timestamp,
 		DeliveryMode: msg.DeliveryMode,
 		Body:         msg.Body,
 		MessageId:    msg.MessageId,
