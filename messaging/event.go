@@ -2,13 +2,15 @@ package messaging
 
 import (
 	"context"
+	"time"
 )
 
 type Event struct {
-	Id     string
-	Action string
-	Body   []byte
-	ctx    context.Context
+	Id        string
+	Action    string
+	Timestamp time.Time
+	Body      []byte
+	ctx       context.Context
 }
 
 // WithContext returns a shallow copy of Event with its context changed to ctx.

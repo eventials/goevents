@@ -80,7 +80,7 @@ func (p *producer) Publish(action string, data []byte) {
 	p.publishAmqMessage(action, amqplib.Publishing{
 		MessageId:    messageId,
 		DeliveryMode: amqplib.Persistent,
-		Timestamp:    time.Now(),
+		Timestamp:    time.Now().UTC(),
 		Body:         data,
 	})
 }
