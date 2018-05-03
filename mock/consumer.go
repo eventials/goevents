@@ -30,3 +30,13 @@ func (c *Consumer) Consume() {
 func (c *Consumer) Close() {
 	c.Called()
 }
+
+func (c *Consumer) BindActions(actions ...string) error {
+	args := c.Called(actions)
+	return args.Error(0)
+}
+
+func (c *Consumer) UnbindActions(actions ...string) error {
+	args := c.Called(actions)
+	return args.Error(0)
+}
