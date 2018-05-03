@@ -86,6 +86,94 @@ func TestSubscribeActions(t *testing.T) {
 	}
 }
 
+func TestSubscribeActionsByBindAfterConsume(t *testing.T) {
+	func1 := make(chan bool)
+	func2 := make(chan bool)
+
+	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeActionsByBindAfterConsume")
+
+	if assert.Nil(t, err) {
+		defer c.Close()
+
+		clearQueue(conn, c.queueName)
+
+		go c.Consume()
+
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
+		c.Subscribe("my_action_1", func(e messaging.Event) error {
+			func1 <- true
+			return nil
+		}, nil)
+
+		c.Subscribe("my_action_2", func(e messaging.Event) error {
+			func2 <- true
+			return nil
+		}, nil)
+
+		assert.NoError(t, c.BindActions("my_action_1", "my_action_2"))
+
+		p, err := NewProducer(conn, "webhooks")
+
+		assert.Nil(t, err)
+
+		p.Publish("my_action_1", []byte(""))
+
+		select {
+		case <-func1:
+		case <-func2:
+			assert.Fail(t, "called wrong action")
+		case <-time.After(3 * time.Second):
+			assert.Fail(t, "timed out")
+		}
+	}
+}
+
+func TestSubscribeActionsUnbindAfterConsume(t *testing.T) {
+	func1 := make(chan bool)
+	func2 := make(chan bool)
+
+	c, err := NewConsumer(conn, false, "webhooks", "TestSubscribeActionsUnbindAfterConsume")
+
+	if assert.Nil(t, err) {
+		defer c.Close()
+
+		clearQueue(conn, c.queueName)
+
+		c.Subscribe("my_action_1", func(e messaging.Event) error {
+			func1 <- true
+			return nil
+		}, nil)
+
+		c.Subscribe("my_action_2", func(e messaging.Event) error {
+			func2 <- true
+			return nil
+		}, nil)
+
+		go c.Consume()
+
+		// take a time to setup topology
+		time.Sleep(SleepSetupTopology)
+
+		assert.NoError(t, c.UnbindActions("my_action_2"))
+
+		p, err := NewProducer(conn, "webhooks")
+
+		assert.Nil(t, err)
+
+		p.Publish("my_action_2", []byte(""))
+
+		select {
+		case <-func1:
+			assert.Fail(t, "called wrong action")
+		case <-func2:
+			assert.Fail(t, "called wrong action")
+		case <-time.After(3 * time.Second):
+		}
+	}
+}
+
 func TestSubscribeWildcardActions(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)

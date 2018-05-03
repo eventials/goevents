@@ -34,7 +34,7 @@ type handler struct {
 type consumer struct {
 	config ConsumerConfig
 
-	m  sync.Mutex
+	m  sync.RWMutex
 	wg sync.WaitGroup
 
 	conn     *connection
@@ -282,8 +282,8 @@ func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 }
 
 func (c *consumer) getHandler(msg amqplib.Delivery) (*handler, bool) {
-	c.m.Lock()
-	defer c.m.Unlock()
+	c.m.RLock()
+	defer c.m.RUnlock()
 
 	action := getAction(msg)
 
@@ -314,6 +314,9 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		}
 	}
 
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	c.handlers = append(c.handlers, handler{
 		action:       action,
 		fn:           handlerFn,
@@ -328,26 +331,10 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 
 // Unsubscribe allows to unsubscribe an action handler.
 func (c *consumer) Unsubscribe(action string) error {
-	channel, err := c.conn.openChannel()
-
-	if err != nil {
-		return err
-	}
-
-	defer channel.Close()
-
-	err = channel.QueueUnbind(
-		c.queueName,    // queue name
-		action,         // routing key
-		c.exchangeName, // exchange
-		nil,            // arguments
-	)
-
-	if err != nil {
-		return err
-	}
-
 	idx := -1
+
+	c.m.Lock()
+	defer c.m.Unlock()
 
 	for i, h := range c.handlers {
 		if h.action == action {
@@ -358,6 +345,51 @@ func (c *consumer) Unsubscribe(action string) error {
 
 	if idx != -1 {
 		c.handlers = append(c.handlers[:idx], c.handlers[idx+1:]...)
+	}
+
+	return nil
+}
+
+func (c *consumer) BindActions(actions ...string) error {
+	channel, err := c.conn.openChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	for _, action := range actions {
+		err := c.bindActionToQueue(channel, c.queueName, action)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *consumer) UnbindActions(actions ...string) error {
+	channel, err := c.conn.openChannel()
+
+	if err != nil {
+		return err
+	}
+
+	defer channel.Close()
+
+	for _, action := range actions {
+		err := channel.QueueUnbind(
+			c.queueName,    // queue name
+			action,         // routing key
+			c.exchangeName, // exchange
+			nil,            // arguments
+		)
+
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
