@@ -1,8 +1,8 @@
 language: go
 go:
-  - 1.9
-  - 1.10
-  - tip
+  - "1.9"
+  - "1.10"
+  - "tip"
 install:
   - go get github.com/streadway/amqp
   - go get github.com/stretchr/testify
