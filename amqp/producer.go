@@ -212,7 +212,7 @@ func (p *producer) drainInternalQueue() {
 				"type":       "goevents",
 				"sub_type":   "producer",
 				"exchange":   p.exchangeName,
-			}).Info("Publishing message to the exchange.")
+			}).Debug("Publishing message to the exchange.")
 
 			err := p.publishMessage(m.msg, m.action)
 
