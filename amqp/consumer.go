@@ -123,7 +123,7 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 			logger.WithFields(log.Fields{
 				"delay":      delay.String(),
 				"message_id": msg.MessageId,
-			}).Info("Delaying message.")
+			}).Debug("Delaying message.")
 
 			time.Sleep(delay)
 		}
@@ -177,7 +177,7 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 			"action":     h.action,
 			"body":       string(msg.Body),
 			"message_id": msg.MessageId,
-		}).Info("Message handled successfully.")
+		}).Debug("Message handled successfully.")
 
 		if !c.autoAck {
 			msg.Ack(false)
