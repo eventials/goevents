@@ -2,6 +2,7 @@ package amqp
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -16,8 +17,9 @@ type connection struct {
 	m          sync.Mutex
 	url        string
 	connection *amqplib.Connection
-	closed     bool
-	connected  bool
+
+	closed    bool
+	connected int32
 
 	reestablishs []chan bool
 }
@@ -48,7 +50,7 @@ func NewConnectionConfig(url string, config ConnectionConfig) (*connection, erro
 		return nil, err
 	}
 
-	connection.setConnected(true)
+	atomic.StoreInt32(&connection.connected, 1)
 
 	go connection.handleConnectionClose()
 
@@ -68,8 +70,11 @@ func (c *connection) NotifyConnectionClose() <-chan error {
 
 // NotifyReestablish returns a channel to notify when the connection is restablished.
 func (c *connection) NotifyReestablish() <-chan bool {
-	receiver := make(chan bool)
+	receiver := make(chan bool, 1)
+
+	c.m.Lock()
 	c.reestablishs = append(c.reestablishs, receiver)
+	c.m.Unlock()
 
 	return receiver
 }
@@ -97,55 +102,37 @@ func (c *connection) Close() {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	c.closed = true
-	c.connection.Close()
+	if !c.closed {
+		c.closed = true
+		c.connection.Close()
+	}
 }
 
 func (c *connection) IsConnected() bool {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	return c.connected
-}
-
-// WaitUntilConnectionCloses holds the execution until the connection closes.
-func (c *connection) WaitUntilConnectionCloses() {
-	<-c.NotifyConnectionClose()
-}
-
-// WaitUntilConnectionReestablished holds the execution until the connection reestablished.
-func (c *connection) WaitUntilConnectionReestablished() {
-	<-c.NotifyReestablish()
+	return atomic.LoadInt32(&c.connected) > 0
 }
 
 func (c *connection) dial() error {
 	conn, err := amqplib.Dial(c.url)
 
 	c.m.Lock()
-	defer c.m.Unlock()
-
 	c.connection = conn
+	c.m.Unlock()
 
 	return err
 }
 
-func (c *connection) setConnected(connected bool) {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	c.connected = connected
-}
-
 func (c *connection) handleConnectionClose() {
 	for !c.closed {
-		c.WaitUntilConnectionCloses()
-		c.setConnected(false)
+		<-c.NotifyConnectionClose()
+
+		atomic.StoreInt32(&c.connected, 0)
 
 		for i := 0; !c.closed; i++ {
 			err := c.dial()
 
 			if err == nil {
-				c.setConnected(true)
+				atomic.StoreInt32(&c.connected, 1)
 
 				log.WithFields(log.Fields{
 					"type":     "goevents",

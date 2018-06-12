@@ -84,8 +84,6 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 		queueName:    queue,
 	}
 
-	go consumer.handleReestablishedConnnection()
-
 	return consumer, nil
 
 }
@@ -107,12 +105,6 @@ func (c *consumer) Close() {
 
 func (c *consumer) uniqueNameWithPrefix() string {
 	return fmt.Sprintf("%s%d", c.config.PrefixName, time.Now().UnixNano())
-}
-
-func (c *consumer) handleReestablishedConnnection() {
-	for !c.closed {
-		c.conn.WaitUntilConnectionReestablished()
-	}
 }
 
 func (c *consumer) dispatch(msg amqplib.Delivery) {
@@ -519,11 +511,13 @@ func (c *consumer) Consume() {
 		logger.Infof("  %s", handler.action)
 	}
 
+	rs := c.conn.NotifyReestablish()
+
 	for !c.closed {
 		if !c.conn.IsConnected() {
 			logger.Info("Connection not established. Waiting connection to be reestablished.")
 
-			c.conn.WaitUntilConnectionReestablished()
+			<-rs
 
 			continue
 		}
