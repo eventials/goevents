@@ -94,8 +94,11 @@ func (p *producer) publishAmqMessage(queue string, msg amqplib.Publishing) {
 
 // NotifyClose returns a channel to be notified then this producer closes.
 func (p *producer) NotifyClose() <-chan bool {
-	receiver := make(chan bool)
+	receiver := make(chan bool, 1)
+
+	p.m.Lock()
 	p.closes = append(p.closes, receiver)
+	p.m.Unlock()
 
 	return receiver
 }
@@ -151,8 +154,10 @@ func (p *producer) setupTopology() error {
 }
 
 func (p *producer) handleReestablishedConnnection() {
+	rs := p.conn.NotifyReestablish()
+
 	for !p.closed {
-		p.conn.WaitUntilConnectionReestablished()
+		<-rs
 
 		err := p.setupTopology()
 
@@ -165,17 +170,38 @@ func (p *producer) handleReestablishedConnnection() {
 	}
 }
 
-func (p *producer) publishMessage(msg amqplib.Publishing, queue string) error {
+func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case error:
+				err = x
+			default:
+				err = errors.New("Unknown panic")
+			}
+		}
+	}()
+
+	if !p.conn.IsConnected() {
+		err = errors.New("Connection is not open.")
+		return
+	}
+
 	channel, err := p.conn.openChannel()
 
 	if err != nil {
-		return err
+		return
 	}
 
 	defer channel.Close()
 
-	if err := channel.Confirm(false); err != nil {
-		return fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+	err = channel.Confirm(false)
+
+	if err != nil {
+		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		return err
 	}
 
 	confirms := channel.NotifyPublish(make(chan amqplib.Confirmation, 1))
@@ -183,14 +209,15 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) error {
 	err = channel.Publish(p.exchangeName, queue, false, false, msg)
 
 	if err != nil {
-		return err
+		return
 	} else {
 		if confirmed := <-confirms; !confirmed.Ack {
-			return ErrNotAcked
+			err = ErrNotAcked
+			return
 		}
 	}
 
-	return nil
+	return
 }
 
 func (p *producer) isClosed() bool {

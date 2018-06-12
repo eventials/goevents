@@ -6,7 +6,5 @@ type Connection interface {
 	Close()
 	NotifyConnectionClose() <-chan error
 	NotifyReestablish() <-chan bool
-	WaitUntilConnectionCloses()
-	WaitUntilConnectionReestablished()
 	IsConnected() bool
 }
