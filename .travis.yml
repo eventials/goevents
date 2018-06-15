@@ -12,7 +12,7 @@ services:
 addons:
   hosts:
     - broker
-script: go test -v ./...
+script: travis_retry go test -v ./...
 notifications:
   email:
     recipients:
