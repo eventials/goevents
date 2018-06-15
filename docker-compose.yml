@@ -2,12 +2,13 @@ version: '2'
 services:
   app:
     build: .
-    working_dir: /go/src/github.com/eventials/goevents
-    command: dockerize -wait tcp://broker:5672 -timeout 60s go run examples/consumer/consumer.go
     links:
+     - broker
+    depends_on:
      - broker
     volumes:
      - .:/go/src/github.com/eventials/goevents
+
   broker:
     image: rabbitmq:3.6-management
     ports:
