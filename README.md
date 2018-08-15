@@ -63,16 +63,3 @@ if err != nil {
     panic(err)
 }
 ```
-
-### Actions
-
-The action can be a full word, a wildcard (`*`) or multiple words or wildcards delimited by dots (`.`)
-
-Look the examples below:
-
-- The action handler `my_action` will match only `my_action` event.
-- The action handler `my_action.foo` will match only `my_action.foo` event.
-- The action handler `my_action.*` will match `my_action.foo`, `my_action.bar` and all `my_action.*` events.
-- The action handler `my_action.foo.bar` will match only `my_action.foo.bar` event.
-- The action handler `my_action.*.bar` will match `my_action.foo.bar`, `my_action.bar.bar` and all `my_action.*.bar` events.
-- The action handler `*` will match all events.
