@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	consumer := sns.NewConsumer(sns.ConsumerConfig{
+	consumer := sns.MustNewConsumer(&sns.ConsumerConfig{
 		AccessKey: "",
 		SecretKey: "",
 		Region:    "us-east-1",
