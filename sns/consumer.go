@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	ErrEmptyConig     = errors.New("empty config")
+	ErrEmptyConfig    = errors.New("empty config")
 	ErrEmptyAccessKey = errors.New("empty access key")
 	ErrEmptySecretKey = errors.New("empty secret key")
 )
@@ -60,7 +60,7 @@ func (c *ConsumerConfig) setDefaults() {
 
 func (c *ConsumerConfig) isValid() error {
 	if c == nil {
-		return ErrEmptyConig
+		return ErrEmptyConfig
 	}
 
 	if c.AccessKey == "" {
