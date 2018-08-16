@@ -21,7 +21,8 @@ WORKDIR /go/src/github.com/eventials/goevents
 RUN go get \
     github.com/streadway/amqp \
     github.com/sirupsen/logrus \
-    github.com/stretchr/testify
+    github.com/stretchr/testify \
+    github.com/aws/aws-sdk-go/service/sqs
 
 ENTRYPOINT ["dockerize"]
 
