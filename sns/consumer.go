@@ -46,7 +46,7 @@ type ConsumerConfig struct {
 
 func (c *ConsumerConfig) setDefaults() {
 	if c.VisibilityTimeout == 0 {
-		c.VisibilityTimeout = 20
+		c.VisibilityTimeout = 45
 	}
 
 	if c.WaitTimeSeconds == 0 {
@@ -83,11 +83,14 @@ type handler struct {
 type consumer struct {
 	sqs                 *sqs.SQS
 	stop                chan bool
+	qos                 chan bool
 	config              *ConsumerConfig
 	receiveMessageInput *sqs.ReceiveMessageInput
 	m                   sync.RWMutex
 	wg                  sync.WaitGroup
 	handlers            map[string]handler
+	processingMessages  map[string]bool
+	mProcessingMessages sync.RWMutex
 }
 
 func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
@@ -109,10 +112,12 @@ func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
 	}
 
 	c := &consumer{
-		sqs:      sqs.New(sess),
-		config:   config,
-		stop:     make(chan bool),
-		handlers: make(map[string]handler),
+		sqs:                sqs.New(sess),
+		config:             config,
+		stop:               make(chan bool),
+		qos:                make(chan bool, config.MaxNumberOfMessages),
+		handlers:           make(map[string]handler),
+		processingMessages: make(map[string]bool),
 	}
 
 	c.receiveMessageInput = &sqs.ReceiveMessageInput{
@@ -223,6 +228,28 @@ func (c *consumer) callAndHandlePanic(event messaging.Event, fn messaging.EventH
 	return
 }
 
+func (c *consumer) isMessageProcessing(id string) bool {
+	c.mProcessingMessages.RLock()
+	defer c.mProcessingMessages.RUnlock()
+
+	_, ok := c.processingMessages[id]
+	return ok
+}
+
+func (c *consumer) addMessageProcessing(id string) {
+	c.mProcessingMessages.Lock()
+	defer c.mProcessingMessages.Unlock()
+
+	c.processingMessages[id] = true
+}
+
+func (c *consumer) deleteMessageProcessing(id string) {
+	c.mProcessingMessages.Lock()
+	defer c.mProcessingMessages.Unlock()
+
+	delete(c.processingMessages, id)
+}
+
 func (c *consumer) handleMessage(message *sqs.Message) {
 	sns := &snsMessagePayload{}
 	err := json.Unmarshal([]byte(*message.Body), sns)
@@ -235,9 +262,12 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 		return
 	}
 
+	id := *message.MessageId
+	receiptHandle := *message.ReceiptHandle
+
 	log := logrus.WithFields(logrus.Fields{
 		"action":     sns.TopicArn,
-		"message_id": message.MessageId,
+		"message_id": id,
 		"body":       sns.Message,
 	})
 
@@ -248,9 +278,27 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 		return
 	}
 
+	// Check if message is already processing in goroutine.
+	// This will occur if consumer is slower than VisibilityTimeout.
+	if c.isMessageProcessing(id) {
+		log.Debug("Message is already processing.")
+		return
+	}
+
+	// QOS: do not consume while prior messages are in goroutines.
+	c.qos <- true
+
+	c.addMessageProcessing(id)
+
 	c.wg.Add(1)
 	go func(event messaging.Event, fn messaging.EventHandler, receiptHandle string) {
-		defer c.wg.Done()
+		defer func() {
+			c.wg.Done()
+
+			c.deleteMessageProcessing(event.Id)
+
+			<-c.qos
+		}()
 
 		err := c.callAndHandlePanic(event, fn)
 
@@ -259,9 +307,11 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 			return
 		}
 
+		log.Debug("Deleting message.")
+
 		_, err = c.sqs.DeleteMessage(&sqs.DeleteMessageInput{
 			QueueUrl:      aws.String(c.config.QueueUrl),
-			ReceiptHandle: &receiptHandle,
+			ReceiptHandle: aws.String(receiptHandle),
 		})
 
 		if err != nil {
@@ -271,14 +321,24 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 
 		log.Debug("Message handled successfully.")
 	}(messaging.Event{
-		Id:        *message.MessageId,
+		Id:        id,
 		Action:    handler.action,
 		Body:      []byte(sns.Message),
 		Timestamp: stringToTime(*message.Attributes["SentTimestamp"]),
-	}, handler.fn, *message.ReceiptHandle)
+	}, handler.fn, receiptHandle)
 }
 
 func (c *consumer) doConsume() {
+	var nextMessages int64 = c.config.MaxNumberOfMessages - int64(len(c.qos))
+
+	if nextMessages == 0 {
+		logrus.Debugf("QOS full with %d.", c.config.MaxNumberOfMessages)
+		time.Sleep(5 * time.Second)
+		return
+	}
+
+	c.receiveMessageInput.MaxNumberOfMessages = aws.Int64(nextMessages)
+
 	result, err := c.sqs.ReceiveMessage(c.receiveMessageInput)
 
 	if err != nil {
@@ -296,6 +356,7 @@ func (c *consumer) doConsume() {
 // Messages successfully handled will be deleted from SQS.
 // Messages who failed to delete from SQS will be received again, and application needs to handle
 // by using MessageId.
+// Receiving duplicate messages may happen using more than one consumer if not processing in VisibilityTimeout.
 func (c *consumer) Consume() {
 	logrus.Info("Registered handlers:")
 
