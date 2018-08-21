@@ -91,6 +91,7 @@ type consumer struct {
 	handlers            map[string]handler
 	processingMessages  map[string]bool
 	mProcessingMessages sync.RWMutex
+	closeOnce           sync.Once
 }
 
 func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
@@ -378,7 +379,19 @@ func (c *consumer) Consume() {
 	}
 }
 
-func (c *consumer) Close() {
+func (c *consumer) doClose() {
+	logrus.Info("Closing SNS consumer...")
+
 	c.stop <- true
+
+	logrus.Info("SNS consumer closed. Waiting remaining handlers...")
 	c.wg.Wait()
+
+	logrus.Info("SNS consumer closed.")
+
+	close(c.stop)
+}
+
+func (c *consumer) Close() {
+	c.closeOnce.Do(c.doClose)
 }

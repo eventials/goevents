@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/eventials/goevents/messaging"
@@ -14,12 +17,13 @@ func main() {
 
 	consumer := sns.MustNewConsumer(&sns.ConsumerConfig{
 		AccessKey:           "",
-		SecretKey:           "0",
+		SecretKey:           "",
 		Region:              "us-east-1",
-		QueueUrl:            "https://sqs.us-east-1.amazonaws.com/0000000000/vlab-exams-mp4-dev",
+		QueueUrl:            "https://sqs.us-east-1.amazonaws.com/0000000000/test-queue",
 		MaxNumberOfMessages: 5,
 	})
 
+	defer consumer.Close()
 	defer consumer.Close()
 
 	consumer.Subscribe("arn:aws:sns:us-east-1:0000000000:test", func(e messaging.Event) error {
@@ -37,5 +41,12 @@ func main() {
 		return nil
 	}, nil)
 
-	consumer.Consume()
+	go consumer.Consume()
+
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	fmt.Println("Waiting CTRL+C")
+
+	<-sigc
 }
