@@ -1,12 +1,12 @@
 FROM golang:1.10
 
 ARG PLATFORM=linux
-ENV PLATFORM $PLATFORM_VERSION
+ENV PLATFORM $PLATFORM
 
 ARG ARCH=amd64
-ENV ARCH $ARCH_VERSION
+ENV ARCH $ARCH
 
-ARG DOCKERIZE_VERSION=v0.2.0
+ARG DOCKERIZE_VERSION=v0.6.1
 ENV DOCKERIZE_VERSION $DOCKERIZE_VERSION
 
 ADD https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-$PLATFORM-$ARCH-$DOCKERIZE_VERSION.tar.gz /usr/local/bin
@@ -26,4 +26,4 @@ RUN go get \
 
 ENTRYPOINT ["dockerize"]
 
-CMD ["-wait", "tcp://broker:5672", "-timeout", "60s", "go", "run", "examples/consumer/consumer.go"]
+CMD ["-wait", "tcp://broker:5672", "-timeout", "60s", "go", "run", "examples/consumer/amqp/consumer.go"]
