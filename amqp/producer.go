@@ -3,6 +3,7 @@ package amqp
 import (
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -12,9 +13,8 @@ import (
 	amqplib "github.com/streadway/amqp"
 )
 
-var (
-	ErrNotAcked = errors.New("Messge was not acked")
-)
+// ErrNotAcked indicated that published messages was not acked by RabbitMQ
+var ErrNotAcked = errors.New("messge was not acked")
 
 type message struct {
 	action string
@@ -23,15 +23,16 @@ type message struct {
 
 // producer holds a amqp connection and channel to publish messages to.
 type producer struct {
-	m    sync.Mutex
-	conn *connection
-
-	config ProducerConfig
+	m                sync.Mutex
+	wg               sync.WaitGroup
+	conn             *connection
+	channel          *amqplib.Channel
+	notifyConfirm    chan amqplib.Confirmation
+	connectionClosed <-chan error
+	closeQueue       chan bool
+	config           ProducerConfig
 
 	internalQueue chan message
-
-	ackChannel  chan uint64
-	nackChannel chan uint64
 
 	exchangeName string
 
@@ -54,31 +55,40 @@ func NewProducer(c messaging.Connection, exchange string) (*producer, error) {
 
 // NewProducerConfig returns a new AMQP Producer.
 func NewProducerConfig(c messaging.Connection, exchange string, config ProducerConfig) (*producer, error) {
+	conn := c.(*connection)
+
 	producer := &producer{
-		conn:          c.(*connection),
-		config:        config,
-		internalQueue: make(chan message),
-		exchangeName:  exchange,
+		conn:             c.(*connection),
+		config:           config,
+		internalQueue:    make(chan message, 2),
+		exchangeName:     exchange,
+		notifyConfirm:    make(chan amqplib.Confirmation),
+		closeQueue:       make(chan bool),
+		connectionClosed: conn.NotifyConnectionClose(),
 	}
 
 	err := producer.setupTopology()
 
 	if err != nil {
 		return nil, err
-	} else {
-		go producer.handleReestablishedConnnection()
-		go producer.drainInternalQueue()
-
-		return producer, err
 	}
+
+	go producer.handleReestablishedConnnection()
+
+	return producer, err
 }
 
 // Publish publishes an action.
 func (p *producer) Publish(action string, data []byte) {
-	messageId, _ := NewUUIDv4()
+	// ignore messages published to a closed producer
+	if p.isClosed() {
+		return
+	}
+
+	messageID, _ := NewUUIDv4()
 
 	p.publishAmqMessage(action, amqplib.Publishing{
-		MessageId:    messageId,
+		MessageId:    messageID,
 		DeliveryMode: amqplib.Persistent,
 		Timestamp:    time.Now().UTC(),
 		Body:         data,
@@ -86,6 +96,8 @@ func (p *producer) Publish(action string, data []byte) {
 }
 
 func (p *producer) publishAmqMessage(queue string, msg amqplib.Publishing) {
+	p.wg.Add(1)
+
 	p.internalQueue <- message{
 		action: queue,
 		msg:    msg,
@@ -103,13 +115,33 @@ func (p *producer) NotifyClose() <-chan bool {
 	return receiver
 }
 
-// Close the producer's internal queue.
-func (p *producer) Close() {
+func (p *producer) setClosed() {
 	p.m.Lock()
 	defer p.m.Unlock()
 
 	p.closed = true
+}
+
+// Close the producer's internal queue.
+func (p *producer) Close() {
+	p.setClosed()
+
+	p.wg.Wait()
+
+	p.closeQueue <- true
+
 	close(p.internalQueue)
+	close(p.closeQueue)
+
+	p.channel.Close()
+}
+
+// changeChannel takes a new channel to the queue,
+// and updates the channel listeners to reflect this.
+func (p *producer) changeChannel(channel *amqplib.Channel) {
+	p.channel = channel
+	p.notifyConfirm = make(chan amqplib.Confirmation)
+	p.channel.NotifyPublish(p.notifyConfirm)
 }
 
 func (p *producer) setupTopology() error {
@@ -121,14 +153,16 @@ func (p *producer) setupTopology() error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	if p.exchangeName != "" {
-		channel, err := p.conn.openChannel()
+	channel, err := p.conn.openChannel()
 
+	if err != nil {
+		return err
+	}
+
+	if p.exchangeName != "" {
 		if err != nil {
 			return err
 		}
-
-		defer channel.Close()
 
 		err = channel.ExchangeDeclare(
 			p.exchangeName, // name
@@ -145,10 +179,21 @@ func (p *producer) setupTopology() error {
 		}
 	}
 
+	err = channel.Confirm(false)
+
+	if err != nil {
+		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		return err
+	}
+
+	p.changeChannel(channel)
+
 	log.WithFields(log.Fields{
 		"type":     "goevents",
 		"sub_type": "producer",
-	}).Debug("Topology ready.")
+	}).Debug("Topology ready. Draining internal queue.")
+
+	go p.drainInternalQueue()
 
 	return nil
 }
@@ -156,23 +201,35 @@ func (p *producer) setupTopology() error {
 func (p *producer) handleReestablishedConnnection() {
 	rs := p.conn.NotifyReestablish()
 
-	for !p.closed {
+	for !p.isClosed() {
 		<-rs
 
 		err := p.setupTopology()
 
 		if err != nil {
 			log.WithFields(log.Fields{
-				"type":  "amqp",
-				"error": err,
+				"type":     "goevents",
+				"sub_type": "producer",
+				"error":    err,
 			}).Error("Error setting up topology after reconnection.")
 		}
 	}
 }
 
 func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err error) {
+	log.WithFields(log.Fields{
+		"action":     queue,
+		"body":       msg.Body,
+		"message_id": msg.MessageId,
+		"type":       "goevents",
+		"sub_type":   "producer",
+		"exchange":   p.exchangeName,
+	}).Debug("Publishing message to the exchange.")
+
 	defer func() {
 		if r := recover(); r != nil {
+			debug.PrintStack()
+
 			switch x := r.(type) {
 			case string:
 				err = errors.New(x)
@@ -185,36 +242,24 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 	}()
 
 	if !p.conn.IsConnected() {
-		err = errors.New("Connection is not open.")
+		err = errors.New("connection is not open")
 		return
 	}
 
-	channel, err := p.conn.openChannel()
+	err = p.channel.Publish(p.exchangeName, queue, false, false, msg)
 
 	if err != nil {
 		return
 	}
 
-	defer channel.Close()
-
-	err = channel.Confirm(false)
-
-	if err != nil {
-		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
-		return err
-	}
-
-	confirms := channel.NotifyPublish(make(chan amqplib.Confirmation, 1))
-
-	err = channel.Publish(p.exchangeName, queue, false, false, msg)
-
-	if err != nil {
-		return
-	} else {
-		if confirmed := <-confirms; !confirmed.Ack {
-			err = ErrNotAcked
+	select {
+	case confirm := <-p.notifyConfirm:
+		if confirm.Ack {
 			return
 		}
+	case <-time.After(p.config.publishInterval):
+		err = ErrNotAcked
+		return
 	}
 
 	return
@@ -228,19 +273,14 @@ func (p *producer) isClosed() bool {
 }
 
 func (p *producer) drainInternalQueue() {
-	for m := range p.internalQueue {
-		var retry = true
-
-		for retry && !p.isClosed() {
-			log.WithFields(log.Fields{
-				"action":     m.action,
-				"body":       m.msg.Body,
-				"message_id": m.msg.MessageId,
-				"type":       "goevents",
-				"sub_type":   "producer",
-				"exchange":   p.exchangeName,
-			}).Debug("Publishing message to the exchange.")
-
+	for {
+		select {
+		case <-p.closeQueue:
+			return
+		case <-p.connectionClosed:
+			return
+		case m := <-p.internalQueue:
+			// block until confirmation
 			err := p.publishMessage(m.msg, m.action)
 
 			if err != nil {
@@ -253,10 +293,9 @@ func (p *producer) drainInternalQueue() {
 					"sub_type":   "producer",
 				}).Error("Error publishing message to the exchange. Retrying...")
 
-				time.Sleep(p.config.publishInterval)
-				continue
+				p.internalQueue <- m
 			} else {
-				retry = false
+				p.wg.Done()
 			}
 		}
 	}

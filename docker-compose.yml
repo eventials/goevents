@@ -7,7 +7,7 @@ services:
     depends_on:
      - broker
     volumes:
-     - .:/go/src/github.com/eventials/goevents
+     - .:/goevents
 
   broker:
     image: rabbitmq:3.6-management

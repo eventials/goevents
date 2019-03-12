@@ -1,28 +1,12 @@
-FROM golang:1.10
+FROM golang:1.12
 
-ARG PLATFORM=linux
-ENV PLATFORM $PLATFORM
+RUN DOCKERIZE_VERSION=v0.6.1 \
+	&& wget --no-check-certificate https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && tar -C /usr/local/bin -xzvf dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && rm dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && mkdir -p /goevents
 
-ARG ARCH=amd64
-ENV ARCH $ARCH
-
-ARG DOCKERIZE_VERSION=v0.6.1
-ENV DOCKERIZE_VERSION $DOCKERIZE_VERSION
-
-ADD https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-$PLATFORM-$ARCH-$DOCKERIZE_VERSION.tar.gz /usr/local/bin
-
-RUN cd /usr/local/bin \
-    && tar -xzf ./dockerize-$PLATFORM-$ARCH-$DOCKERIZE_VERSION.tar.gz \
-    && rm -f ./dockerize-$PLATFORM-$ARCH-$DOCKERIZE_VERSION.tar.gz
-
-RUN mkdir -p /go/src/github.com/eventials/goevents
-WORKDIR /go/src/github.com/eventials/goevents
-
-RUN go get \
-    github.com/streadway/amqp \
-    github.com/sirupsen/logrus \
-    github.com/stretchr/testify \
-    github.com/aws/aws-sdk-go/service/sqs
+WORKDIR /goevents
 
 ENTRYPOINT ["dockerize"]
 

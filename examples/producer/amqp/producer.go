@@ -5,9 +5,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"fmt"
+
 	"github.com/eventials/goevents/amqp"
 )
 
@@ -28,7 +28,6 @@ func main() {
 	}
 
 	producerB, err := amqp.NewProducer(conn, "events-exchange")
-	wg.Add(1)
 
 	if err != nil {
 		panic(err)
@@ -36,23 +35,26 @@ func main() {
 
 	go func() {
 		for {
-			producerA.Publish("object.eventA", []byte("some data"))
-			producerB.Publish("object.eventC", []byte("some data"))
-
-			time.Sleep(1 * time.Second)
+			select {
+			case <-producerA.NotifyClose():
+				fmt.Println("ProducerA closed for good")
+				return
+			default:
+				producerA.Publish("object.eventA", []byte("some data"))
+			}
 		}
 	}()
 
 	go func() {
-		<-producerA.NotifyClose()
-		fmt.Println("Producer closed for good")
-		wg.Done()
-	}()
-
-	go func() {
-		<-producerB.NotifyClose()
-		fmt.Println("Producer closed for good")
-		wg.Done()
+		for {
+			select {
+			case <-producerB.NotifyClose():
+				fmt.Println("ProducerB closed for good")
+				return
+			default:
+				producerB.Publish("object.eventC", []byte("some data"))
+			}
+		}
 	}()
 
 	sigc := make(chan os.Signal, 1)
@@ -66,6 +68,4 @@ func main() {
 
 	fmt.Println("Closing producerB")
 	producerB.Close()
-
-	wg.Wait()
 }
