@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,6 +141,8 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			debug.PrintStack()
+
 			switch x := r.(type) {
 			case string:
 				err = errors.New(x)
