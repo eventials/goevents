@@ -10,4 +10,4 @@ WORKDIR /goevents
 
 ENTRYPOINT ["dockerize"]
 
-CMD ["-wait", "tcp://broker:5672", "-timeout", "60s", "go", "run", "examples/consumer/consumer.go"]
+CMD ["-wait", "tcp://broker:5672", "-timeout", "60s", "go", "run", "examples/consumer/amqp/consumer.go"]

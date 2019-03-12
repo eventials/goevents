@@ -10,6 +10,9 @@ type Event struct {
 	Action    string
 	Timestamp time.Time
 	Body      []byte
+	Ack       func(multiple bool) error
+	Nack      func(multiple, requeue bool) error
+	Reject    func(requeue bool) error
 	ctx       context.Context
 }
 

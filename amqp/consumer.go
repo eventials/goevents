@@ -156,12 +156,17 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 		}
 	}()
 
-	err = h.fn(messaging.Event{
+	event := messaging.Event{
 		Id:        msg.MessageId,
 		Action:    h.action,
 		Body:      msg.Body,
 		Timestamp: msg.Timestamp,
-	})
+		Ack:       msg.Ack,
+		Nack:      msg.Nack,
+		Reject:    msg.Reject,
+	}
+
+	err = h.fn(event)
 
 	return
 }
