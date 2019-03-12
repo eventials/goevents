@@ -212,8 +212,6 @@ func (p *producer) handleReestablishedConnnection() {
 				"sub_type": "producer",
 				"error":    err,
 			}).Error("Error setting up topology after reconnection.")
-
-			continue
 		}
 	}
 }
