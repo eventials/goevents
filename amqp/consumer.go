@@ -89,16 +89,18 @@ func NewConsumerConfig(c messaging.Connection, autoAck bool, exchange, queue str
 
 }
 
+func (c *consumer) closeAndClearHandlers() {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	// Unsubscribe all handlers
+	c.handlers = make([]handler, 0)
+
+	c.closed = true
+}
+
 func (c *consumer) Close() {
-	func() {
-		c.m.Lock()
-		defer c.m.Unlock()
-
-		// Unsubscribe all handlers
-		c.handlers = make([]handler, 0)
-
-		c.closed = true
-	}()
+	c.closeAndClearHandlers()
 
 	// Wait all go routine finish.
 	c.wg.Wait()
@@ -401,6 +403,9 @@ func (c *consumer) bindActionToQueue(channel *amqplib.Channel, queueName string,
 }
 
 func (c *consumer) bindAllActionsQueue(channel *amqplib.Channel, queueName string) error {
+	c.m.RLock()
+	defer c.m.RUnlock()
+
 	for _, h := range c.handlers {
 		err := c.bindActionToQueue(channel, queueName, h.action)
 		if err != nil {
@@ -506,6 +511,13 @@ func (c *consumer) doConsume() error {
 	return nil
 }
 
+func (c *consumer) isClosed() bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	return c.closed
+}
+
 // Listen start to listen for new messages.
 func (c *consumer) Consume() {
 	logger.Info("Registered handlers:")
@@ -516,7 +528,7 @@ func (c *consumer) Consume() {
 
 	rs := c.conn.NotifyReestablish()
 
-	for !c.closed {
+	for !c.isClosed() {
 		if !c.conn.IsConnected() {
 			logger.Info("Connection not established. Waiting connection to be reestablished.")
 

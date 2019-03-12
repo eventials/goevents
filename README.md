@@ -26,11 +26,15 @@ if err != nil {
     panic(err)
 }
 
+defer conn.Close()
+
 c, err := NewConsumer(conn, false, "events-exchange", "events-queue")
 
 if err != nil {
     panic(err)
 }
+
+defer c.Close()
 
 c.Subscribe("object.*", func(body []byte) bool {
     fmt.Println(body)
@@ -39,7 +43,7 @@ c.Subscribe("object.*", func(body []byte) bool {
 
 go c.Consume()
 
-conn.WaitUntilConnectionClose()
+select{}
 ```
 
 **The producer**
@@ -51,11 +55,15 @@ if err != nil {
     panic(err)
 }
 
+defer conn.Close()
+
 p, err := NewProducer(conn, "events-exchange", "events-queue")
 
 if err != nil {
     panic(err)
 }
+
+defer p.Close()
 
 err = p.Publish("object.my_action", []byte("message"))
 
@@ -63,3 +71,8 @@ if err != nil {
     panic(err)
 }
 ```
+
+## Important
+
+When using `producer`, always close all your producers (things who call the producer.Publish) before closing the producer itself (producer.Close).
+In this way, you have more garanties that your messages is delivered to RabbitMQ.
