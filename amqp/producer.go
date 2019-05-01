@@ -14,7 +14,8 @@ import (
 )
 
 // ErrNotAcked indicated that published messages was not acked by RabbitMQ
-var ErrNotAcked = errors.New("messge was not acked")
+var ErrNotAcked = errors.New("message was not acked")
+var ErrTimedout = errors.New("message was timed out")
 
 type message struct {
 	action string
@@ -23,20 +24,22 @@ type message struct {
 
 // producer holds a amqp connection and channel to publish messages to.
 type producer struct {
-	m             sync.Mutex
-	wg            sync.WaitGroup
-	conn          *connection
-	channel       *amqplib.Channel
-	notifyConfirm chan amqplib.Confirmation
-	closeQueue    chan bool
-	config        ProducerConfig
+	m               sync.Mutex
+	wg              sync.WaitGroup
+	conn            *connection
+	channel         *amqplib.Channel
+	notifyConfirm   chan amqplib.Confirmation
+	notifyChanClose chan *amqplib.Error
+	closeQueue      chan bool
+	config          ProducerConfig
 
 	internalQueue chan message
 
 	exchangeName string
 
-	closed bool
-	closes []chan bool
+	closed       bool
+	channelReady bool
+	closes       []chan bool
 }
 
 // ProducerConfig to be used when creating a new producer.
@@ -59,7 +62,6 @@ func NewProducerConfig(c messaging.Connection, exchange string, config ProducerC
 		config:        config,
 		internalQueue: make(chan message, 2),
 		exchangeName:  exchange,
-		notifyConfirm: make(chan amqplib.Confirmation),
 		closeQueue:    make(chan bool),
 	}
 
@@ -141,8 +143,14 @@ func (p *producer) Close() {
 // and updates the channel listeners to reflect this.
 func (p *producer) changeChannel(channel *amqplib.Channel) {
 	p.channel = channel
+
+	p.notifyChanClose = make(chan *amqplib.Error)
+	p.channel.NotifyClose(p.notifyChanClose)
+
 	p.notifyConfirm = make(chan amqplib.Confirmation)
 	p.channel.NotifyPublish(p.notifyConfirm)
+
+	p.channelReady = true
 }
 
 func (p *producer) setupTopology() error {
@@ -197,14 +205,59 @@ func (p *producer) setupTopology() error {
 	return nil
 }
 
+func (p *producer) setChannelReady(ready bool) {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	p.channelReady = ready
+}
+
+func (p *producer) isChannelReady() bool {
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	return p.channelReady
+}
+
+func (p *producer) isConnected() bool {
+	if !p.conn.IsConnected() {
+		return false
+	}
+
+	return p.isChannelReady()
+}
+
+func (p *producer) waitConnectionLost() bool {
+	if !p.isConnected() {
+		return true
+	}
+
+	defer p.setChannelReady(false)
+
+	select {
+	case <-p.conn.NotifyConnectionClose():
+		log.Warn("Producer connection closed")
+		return true
+	case <-p.notifyChanClose:
+		log.Warn("Producer channel closed")
+		return false
+	}
+}
+
 func (p *producer) handleReestablishedConnnection() {
 	rs := p.conn.NotifyReestablish()
 
 	for !p.isClosed() {
-		<-rs
+		// true if connection is lot
+		// false if channel connection is lost
+		connectionLost := p.waitConnectionLost()
+
+		if connectionLost {
+			// Wait reconnect
+			<-rs
+		}
 
 		err := p.setupTopology()
-
 		if err != nil {
 			log.WithFields(log.Fields{
 				"type":     "goevents",
@@ -216,8 +269,8 @@ func (p *producer) handleReestablishedConnnection() {
 }
 
 func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err error) {
-	if !p.conn.IsConnected() {
-		err = errors.New("connection is not open")
+	if !p.isConnected() {
+		err = errors.New("connection/channel is not open")
 		return
 	}
 
@@ -245,7 +298,12 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 		}
 	}()
 
-	err = p.channel.Publish(p.exchangeName, queue, false, false, msg)
+	err = p.channel.Publish(
+		p.exchangeName, // Exchange
+		queue,          // Routing key
+		false,          // Mandatory
+		false,          // Immediate
+		msg)
 
 	if err != nil {
 		return
@@ -260,7 +318,7 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 		err = ErrNotAcked
 		return
 	case <-time.After(p.config.publishInterval):
-		err = ErrNotAcked
+		err = ErrTimedout
 		return
 	}
 
