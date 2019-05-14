@@ -1,12 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-
-	"fmt"
+	"time"
 
 	"github.com/eventials/goevents/amqp"
 )
@@ -58,14 +58,29 @@ func main() {
 	}()
 
 	sigc := make(chan os.Signal, 1)
+
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	fmt.Println("Waiting CTRL+C")
 
 	<-sigc
-	fmt.Println("Closing producerA")
-	producerA.Close()
 
-	fmt.Println("Closing producerB")
-	producerB.Close()
+	closed := make(chan bool)
+
+	go func() {
+		fmt.Println("Closing producerA")
+		producerA.Close()
+
+		fmt.Println("Closing producerB")
+		producerB.Close()
+
+		closed <- true
+	}()
+
+	select {
+	case <-closed:
+		fmt.Println("Successfully closed.")
+	case <-time.After(20 * time.Second):
+		fmt.Println("Close timeout.")
+	}
 }
