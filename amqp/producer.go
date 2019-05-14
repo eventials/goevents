@@ -368,6 +368,14 @@ func (p *producer) drainInternalQueue() {
 					"sub_type":   "producer",
 				}).Error("Error publishing message to the exchange. Retrying...")
 
+				if err == ErrTimedout {
+					log.Warn("Closing producer channel due timeout wating msg confirmation")
+
+					// force close to run setupTopology
+					p.setChannelReady(false)
+					p.channel.Close()
+				}
+
 				time.Sleep(p.config.PublishInterval)
 			} else {
 				p.wg.Done()
