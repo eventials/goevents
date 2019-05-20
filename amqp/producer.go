@@ -160,7 +160,7 @@ func (p *producer) changeChannel(channel *amqplib.Channel) {
 	p.notifyChanClose = make(chan *amqplib.Error)
 	p.channel.NotifyClose(p.notifyChanClose)
 
-	p.notifyConfirm = make(chan amqplib.Confirmation)
+	p.notifyConfirm = make(chan amqplib.Confirmation, 1)
 	p.channel.NotifyPublish(p.notifyConfirm)
 
 	p.channelReady = true
