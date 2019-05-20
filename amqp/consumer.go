@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/eventials/goevents/messaging"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	amqplib "github.com/streadway/amqp"
 )
 
 var (
-	logger = log.WithFields(log.Fields{
+	logger = logrus.WithFields(logrus.Fields{
 		"type":     "goevents",
 		"sub_type": "consumer",
 	})
@@ -115,7 +115,7 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 		delay, isRetry := getXRetryDelayHeader(msg)
 
 		if isRetry {
-			logger.WithFields(log.Fields{
+			logger.WithFields(logrus.Fields{
 				"delay":      delay.String(),
 				"message_id": msg.MessageId,
 			}).Debug("Delaying message.")
@@ -131,7 +131,7 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 			err := msg.Nack(false, true)
 
 			if err != nil {
-				logger.WithFields(log.Fields{
+				logger.WithFields(logrus.Fields{
 					"error":      err,
 					"message_id": msg.MessageId,
 				}).Error("Failed to nack message.")
@@ -174,48 +174,42 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := c.callAndHandlePanic(msg, h)
 
+	log := logger.WithFields(logrus.Fields{
+		"action":     h.action,
+		"body":       string(msg.Body),
+		"message_id": msg.MessageId,
+	})
+
 	if err == nil {
-		logger.WithFields(log.Fields{
-			"action":     h.action,
-			"body":       string(msg.Body),
-			"message_id": msg.MessageId,
-		}).Debug("Message handled successfully.")
+		log.Debug("Message handled successfully.")
 
 		if !c.autoAck {
 			msg.Ack(false)
 		}
-	} else {
-		if h.maxRetries > 0 {
-			if retryCount >= h.maxRetries {
-				logger.WithFields(log.Fields{
-					"action":     h.action,
-					"body":       string(msg.Body),
-					"error":      err,
-					"message_id": msg.MessageId,
-				}).Error("Maximum retries reached. Giving up.")
 
-				if !c.autoAck {
-					msg.Ack(false)
-				}
-			} else {
-				logger.WithFields(log.Fields{
-					"action":     h.action,
-					"body":       string(msg.Body),
-					"error":      err,
-					"message_id": msg.MessageId,
-				}).Error("Failed to process event. Retrying...")
-
-				c.retryMessage(msg, h, retryCount, delay)
-			}
-		} else {
-			logger.WithFields(log.Fields{
-				"action":     h.action,
-				"body":       string(msg.Body),
-				"error":      err,
-				"message_id": msg.MessageId,
-			}).Error("Failed to process event.")
-		}
+		return
 	}
+
+	log = log.WithError(err)
+
+	if h.maxRetries == 0 {
+		log.Warn("Failed to process event.")
+		return
+	}
+
+	if retryCount >= h.maxRetries {
+		log.Error("Maximum retries reached. Giving up.")
+
+		if !c.autoAck {
+			msg.Ack(false)
+		}
+
+		return
+	}
+
+	log.Debug("Failed to process event. Retrying...")
+
+	c.retryMessage(msg, h, retryCount, delay)
 }
 
 func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
@@ -271,9 +265,7 @@ func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 	err := c.publishMessage(retryMsg, c.queueName)
 
 	if err != nil {
-		logger.WithFields(log.Fields{
-			"error": err,
-		}).Error("Failed to retry.")
+		logger.WithError(err).Error("Failed to retry.")
 
 		if !c.autoAck {
 			msg.Nack(false, true)
@@ -468,9 +460,11 @@ func (c *consumer) setupTopology(channel *amqplib.Channel) (err error) {
 }
 
 func (c *consumer) doConsume() error {
-	logger.WithFields(log.Fields{
+	log := logger.WithFields(logrus.Fields{
 		"queue": c.queueName,
-	}).Debug("Setting up consumer channel...")
+	})
+
+	log.Debug("Setting up consumer channel...")
 
 	channel, err := c.conn.openChannel()
 
@@ -500,9 +494,7 @@ func (c *consumer) doConsume() error {
 		return err
 	}
 
-	logger.WithFields(log.Fields{
-		"queue": c.queueName,
-	}).Info("Consuming messages...")
+	log.Info("Consuming messages...")
 
 	for m := range msgs {
 		c.wg.Add(1)
@@ -545,12 +537,12 @@ func (c *consumer) Consume() {
 		err := c.doConsume()
 
 		if err == nil {
-			logger.WithFields(log.Fields{
+			logger.WithFields(logrus.Fields{
 				"queue":  c.queueName,
 				"closed": c.closed,
 			}).Info("Consumption finished.")
 		} else {
-			logger.WithFields(log.Fields{
+			logger.WithFields(logrus.Fields{
 				"queue": c.queueName,
 				"error": err,
 			}).Error("Error consuming events.")
