@@ -30,6 +30,11 @@ type handler struct {
 	maxRetries   int32
 	retryDelay   time.Duration
 	delayedRetry bool
+	manualMode   bool
+}
+
+func (h *handler) manual() {
+	h.manualMode = true
 }
 
 type consumer struct {
@@ -126,16 +131,17 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 		retryCount, _ := getXRetryCountHeader(msg)
 
 		c.doDispatch(msg, h, retryCount, delay)
-	} else {
-		if !c.autoAck {
-			err := msg.Nack(false, true)
+		return
+	}
 
-			if err != nil {
-				logger.WithFields(logrus.Fields{
-					"error":      err,
-					"message_id": msg.MessageId,
-				}).Error("Failed to nack message.")
-			}
+	if !c.autoAck {
+		err := msg.Nack(false, true)
+
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"error":      err,
+				"message_id": msg.MessageId,
+			}).Error("Failed to nack message.")
 		}
 	}
 }
@@ -156,6 +162,8 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 		}
 	}()
 
+	h.manualMode = false
+
 	event := messaging.Event{
 		Id:        msg.MessageId,
 		Action:    h.action,
@@ -164,6 +172,7 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 		Ack:       msg.Ack,
 		Nack:      msg.Nack,
 		Reject:    msg.Reject,
+		Manual:    h.manual,
 	}
 
 	err = h.fn(event)
@@ -174,6 +183,10 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32, delay time.Duration) {
 	err := c.callAndHandlePanic(msg, h)
 
+	if c.autoAck || h.manualMode {
+		return
+	}
+
 	log := logger.WithFields(logrus.Fields{
 		"action":     h.action,
 		"body":       string(msg.Body),
@@ -183,9 +196,7 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 	if err == nil {
 		log.Debug("Message handled successfully.")
 
-		if !c.autoAck {
-			msg.Ack(false)
-		}
+		msg.Ack(false)
 
 		return
 	}
@@ -200,9 +211,7 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 	if retryCount >= h.maxRetries {
 		log.Error("Maximum retries reached. Giving up.")
 
-		if !c.autoAck {
-			msg.Ack(false)
-		}
+		msg.Ack(false)
 
 		return
 	}

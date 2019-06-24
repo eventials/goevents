@@ -772,7 +772,7 @@ func TestCallEventAckMethod(t *testing.T) {
 	func1 := make(chan bool)
 	func2 := make(chan bool)
 
-	c, err := NewConsumer(conn, false, "multi", "TestSubscribeActions")
+	c, err := NewConsumer(conn, false, "multi", "TestCallEventAckMethod")
 
 	if assert.Nil(t, err) {
 		defer c.Close()
@@ -780,12 +780,16 @@ func TestCallEventAckMethod(t *testing.T) {
 		clearQueue(conn, c.queueName)
 
 		c.Subscribe("multi", func(e messaging.Event) error {
+			e.Manual()
+
 			e.Ack(false)
 			func1 <- true
 			return nil
 		}, nil)
 
-		c.Subscribe("multi", func(e messaging.Event) error {
+		c.Subscribe("multi_2", func(e messaging.Event) error {
+			e.Manual()
+
 			e.Ack(false)
 			func2 <- true
 			return nil
@@ -813,13 +817,15 @@ func TestCallEventAckMethod(t *testing.T) {
 }
 
 func TestCallEventNackMethod(t *testing.T) {
-	c, err := NewConsumer(conn, false, "onlynack", "TestSubscribeActions")
+	c, err := NewConsumer(conn, false, "onlynack", "TestCallEventNackMethod")
 
 	if assert.Nil(t, err) {
 		count := 0
 		defer c.Close()
 		clearQueue(conn, c.queueName)
 		c.Subscribe("multi", func(e messaging.Event) error {
+			e.Manual()
+
 			count += 1
 			if count == 3 {
 				e.Ack(false)
@@ -835,7 +841,7 @@ func TestCallEventNackMethod(t *testing.T) {
 		// take a time to setup topology
 		time.Sleep(SleepSetupTopology)
 
-		p, err := NewProducer(conn, "multi")
+		p, err := NewProducer(conn, "onlynack")
 
 		assert.Nil(t, err)
 
