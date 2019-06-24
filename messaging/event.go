@@ -13,6 +13,7 @@ type Event struct {
 	Ack       func(multiple bool) error
 	Nack      func(multiple, requeue bool) error
 	Reject    func(requeue bool) error
+	Manual    func()
 	ctx       context.Context
 }
 
