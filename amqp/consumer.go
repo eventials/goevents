@@ -57,6 +57,7 @@ var consumerTagSeq uint64
 // ConsumerConfig to be used when creating a new producer.
 type ConsumerConfig struct {
 	ConsumeRetryInterval time.Duration
+	MaxRetryDelay        time.Duration
 	PrefetchCount        int
 	PrefixName           string
 }
@@ -66,6 +67,7 @@ type ConsumerConfig struct {
 func NewConsumer(c messaging.Connection, autoAck bool, exchange, queue string) (*consumer, error) {
 	return NewConsumerConfig(c, autoAck, exchange, queue, ConsumerConfig{
 		ConsumeRetryInterval: 2 * time.Second,
+		MaxRetryDelay:        5 * time.Minute,
 		PrefetchCount:        0,
 	})
 }
@@ -120,6 +122,10 @@ func (c *consumer) dispatch(msg amqplib.Delivery) {
 		delay, isRetry := getXRetryDelayHeader(msg)
 
 		if isRetry {
+			if delay > c.config.MaxRetryDelay {
+				delay = c.config.MaxRetryDelay
+			}
+
 			logger.WithFields(logrus.Fields{
 				"delay":      delay.String(),
 				"message_id": msg.MessageId,

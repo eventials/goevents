@@ -26,14 +26,14 @@ type connection struct {
 
 // ConnectionConfig to be used when creating a new connection.
 type ConnectionConfig struct {
-	reconnectInterval time.Duration
+	ReconnectInterval time.Duration
 }
 
 // NewConnection returns an AMQP Connection.
 // Uses a default ConnectionConfig with 2 second of reconnect interval.
 func NewConnection(url string) (*connection, error) {
 	return NewConnectionConfig(url, ConnectionConfig{
-		reconnectInterval: 2 * time.Second,
+		ReconnectInterval: 2 * time.Second,
 	})
 }
 
@@ -153,7 +153,7 @@ func (c *connection) handleConnectionClose() {
 					"attempt":  i,
 				}).Error("Error reestablishing connection. Retrying...")
 
-				time.Sleep(c.config.reconnectInterval)
+				time.Sleep(c.config.ReconnectInterval)
 			}
 		}
 	}
