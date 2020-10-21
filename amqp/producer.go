@@ -10,6 +10,7 @@ import (
 	"github.com/eventials/goevents/messaging"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/streadway/amqp"
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -86,11 +87,16 @@ func (p *producer) Publish(action string, data []byte) {
 
 	messageID, _ := NewUUIDv4()
 
+	now := time.Now().UTC()
+
 	p.publishAmqMessage(action, amqplib.Publishing{
 		MessageId:    messageID,
 		DeliveryMode: amqplib.Persistent,
-		Timestamp:    time.Now().UTC(),
+		Timestamp:    now,
 		Body:         data,
+		Headers: amqp.Table{
+			"x-epoch-milli": now.Unix() / int64(time.Millisecond),
+		},
 	})
 }
 

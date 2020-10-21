@@ -458,10 +458,10 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 		defer func() { timesCalled1++ }()
 
 		if timesCalled1 == 0 {
-			return fmt.Errorf("Error.")
-		} else {
-			return nil
+			return fmt.Errorf("timescalled zero")
 		}
+
+		return nil
 	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
@@ -506,7 +506,7 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	// It runs once and get an error, it will try five times more until it stops.
 	c.Subscribe("my_action", func(e messaging.Event) error {
 		defer func() { timesCalled++ }()
-		return fmt.Errorf("Error.")
+		return fmt.Errorf("error")
 	}, &messaging.SubscribeOptions{
 		RetryDelay:   100 * time.Millisecond,
 		DelayedRetry: false,
@@ -544,7 +544,7 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 		// It runs once and get an error, it will try three times more until it stops.
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
-			return fmt.Errorf("Error.")
+			return fmt.Errorf("error")
 		}, &messaging.SubscribeOptions{
 			RetryDelay:   100 * time.Millisecond,
 			DelayedRetry: true,
@@ -583,7 +583,7 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 		// It runs once and get an error, it will try three times more until it stops.
 		c.Subscribe("my_action", func(e messaging.Event) error {
 			defer func() { timesCalled++ }()
-			return fmt.Errorf("Error.")
+			return fmt.Errorf("error")
 		}, &messaging.SubscribeOptions{
 			RetryDelay:   100 * time.Millisecond,
 			DelayedRetry: true,
@@ -628,7 +628,7 @@ func TestActionRetryTimeout(t *testing.T) {
 			defer func() {
 				myActionTimesCalled++
 			}()
-			return fmt.Errorf("Error.")
+			return fmt.Errorf("error")
 		}, &messaging.SubscribeOptions{
 			RetryDelay:   300 * time.Millisecond,
 			DelayedRetry: true,
@@ -826,7 +826,8 @@ func TestCallEventNackMethod(t *testing.T) {
 		c.Subscribe("multi", func(e messaging.Event) error {
 			e.Manual()
 
-			count += 1
+			count++
+
 			if count == 3 {
 				e.Ack(false)
 			} else {

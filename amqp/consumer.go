@@ -174,7 +174,7 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 		Id:        msg.MessageId,
 		Action:    h.action,
 		Body:      msg.Body,
-		Timestamp: msg.Timestamp,
+		Timestamp: getXEpochMilli(msg),
 		Ack:       msg.Ack,
 		Nack:      msg.Nack,
 		Reject:    msg.Reject,
@@ -264,13 +264,14 @@ func (c *consumer) retryMessage(msg amqplib.Delivery, h *handler, retryCount int
 		delay = h.retryDelay
 	}
 
+	headers := msg.Headers
+	headers["x-retry-count"] = retryCount + 1
+	headers["x-retry-max"] = h.maxRetries
+	headers["x-retry-delay"] = delay.String()
+	headers["x-action-key"] = getAction(msg)
+
 	retryMsg := amqplib.Publishing{
-		Headers: amqplib.Table{
-			"x-retry-count": retryCount + 1,
-			"x-retry-max":   h.maxRetries,
-			"x-retry-delay": delay.String(),
-			"x-action-key":  getAction(msg),
-		},
+		Headers:      headers,
 		Timestamp:    msg.Timestamp,
 		DeliveryMode: msg.DeliveryMode,
 		Body:         msg.Body,
@@ -590,4 +591,17 @@ func getXRetryDelayHeader(msg amqplib.Delivery) (time.Duration, bool) {
 	}
 
 	return time.Duration(0), false
+}
+
+func getXEpochMilli(msg amqplib.Delivery) time.Time {
+	if epoch, ok := msg.Headers["x-epoch-milli"]; ok {
+		switch v := epoch.(type) {
+		case int64:
+			return time.Unix(0, v*int64(time.Millisecond))
+		case int:
+			return time.Unix(0, int64(v)*int64(time.Millisecond))
+		}
+	}
+
+	return msg.Timestamp
 }

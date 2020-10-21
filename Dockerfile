@@ -1,4 +1,4 @@
-FROM golang:1.12
+FROM golang:1.15
 
 RUN DOCKERIZE_VERSION=v0.6.1 \
 	&& wget --no-check-certificate https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
@@ -7,6 +7,10 @@ RUN DOCKERIZE_VERSION=v0.6.1 \
     && mkdir -p /goevents
 
 WORKDIR /goevents
+
+ADD . .
+
+RUN go mod download
 
 ENTRYPOINT ["dockerize"]
 
