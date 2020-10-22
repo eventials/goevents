@@ -95,7 +95,7 @@ func (p *producer) Publish(action string, data []byte) {
 		Timestamp:    now,
 		Body:         data,
 		Headers: amqp.Table{
-			"x-epoch-milli": now.Unix() / int64(time.Millisecond),
+			"x-epoch-milli": int64(now.UnixNano()/int64(time.Nanosecond)) / int64(time.Millisecond),
 		},
 	})
 }

@@ -194,9 +194,10 @@ func (c *consumer) doDispatch(msg amqplib.Delivery, h *handler, retryCount int32
 	}
 
 	log := logger.WithFields(logrus.Fields{
-		"action":     h.action,
-		"body":       string(msg.Body),
-		"message_id": msg.MessageId,
+		"action":       h.action,
+		"body":         string(msg.Body),
+		"message_id":   msg.MessageId,
+		"published_at": msg.Timestamp.String(),
 	})
 
 	if err == nil {
