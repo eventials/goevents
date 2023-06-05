@@ -452,8 +452,15 @@ func checkPriorityMessages(consumers []*consumer, currentConsumer *consumer) boo
 			return true
 		}
 
+		// Get the approximate number of messages in the queue for the consumer
+		qtMessages, err := consumer.approximateNumberOfMessages()
+		if err != nil {
+			logrus.WithError(err).Errorf("Failed to get approximate number of messages for consumer %s", consumer.config.QueueUrl)
+			continue
+		}
+
 		// If any higher priority consumer has messages to consume, then the currentConsumer should not consume.
-		if len(consumer.qos) > 0 {
+		if len(consumer.qos)+qtMessages > 0 {
 			logrus.Debugf("Higher priority consumer %s has messages to consume, skipping current consumer %s", consumer.config.QueueUrl, currentConsumer.config.QueueUrl)
 			return false
 		}
@@ -461,6 +468,25 @@ func checkPriorityMessages(consumers []*consumer, currentConsumer *consumer) boo
 
 	// If no consumers were found to have messages, the currentConsumer can consume.
 	return true
+}
+
+// approximateNumberOfMessages is a method on the consumer type that gets the approximate number of messages in the queue.
+// It uses AWS SQS's GetQueueAttributes API to fetch the ApproximateNumberOfMessages attribute,
+// which gives an estimate of the number of visible messages in the queue.
+func (c *consumer) approximateNumberOfMessages() (int, error) {
+	// Request to get queue attributes from AWS SQS
+	result, err := c.sqs.GetQueueAttributes(&sqs.GetQueueAttributesInput{
+		QueueUrl:       aws.String(c.config.QueueUrl),                                            // Specify the queue URL from consumer config
+		AttributeNames: []*string{aws.String(sqs.QueueAttributeNameApproximateNumberOfMessages)}, // Specify the attribute we want to fetch
+	})
+
+	// If there's an error in fetching the queue attributes, return 0 and the error
+	if err != nil {
+		return 0, err
+	}
+
+	// If the fetch was successful, convert the returned attribute (which is a string) to an integer
+	return strconv.Atoi(*result.Attributes[sqs.QueueAttributeNameApproximateNumberOfMessages])
 }
 
 func (c *consumer) doClose() {
