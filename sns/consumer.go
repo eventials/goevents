@@ -454,6 +454,7 @@ func checkPriorityMessages(consumers []*consumer, currentConsumer *consumer) boo
 
 		// If any higher priority consumer has messages to consume, then the currentConsumer should not consume.
 		if len(consumer.qos) > 0 {
+			logrus.Debugf("Higher priority consumer %s has messages to consume, skipping current consumer %s", consumer.config.QueueUrl, currentConsumer.config.QueueUrl)
 			return false
 		}
 	}
