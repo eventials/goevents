@@ -92,6 +92,7 @@ type consumer struct {
 	processingMessages  map[string]bool
 	mProcessingMessages sync.RWMutex
 	closeOnce           sync.Once
+	stopped             bool
 }
 
 func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
@@ -377,6 +378,115 @@ func (c *consumer) Consume() {
 			c.doConsume()
 		}
 	}
+}
+
+// PriorityConsume function takes a list of consumer objects and starts consuming them in a loop.
+// The consumers are processed according to their priority. The process is stopped if the stop signal is received.
+// The function exits when all consumers are stopped.
+func PriorityConsume(consumers []messaging.Consumer) {
+	logrus.Info("Registered handlers:")
+
+	// consumersQueue holds the actual *consumer types cast from the messaging.Consumer interface
+	consumersQueue := make([]*consumer, len(consumers))
+
+	// Logging the registered handlers for each consumer
+	for priority, c := range consumers {
+		actualConsumer, ok := c.(*consumer) // Casting to *consumer
+		if !ok {
+			logrus.Error("Failed to cast consumer to consumer type")
+			return
+		}
+		for _, handler := range actualConsumer.handlers {
+			logrus.Infof("  %s (priority %d)", handler.action, priority)
+		}
+		consumersQueue[priority] = actualConsumer
+	}
+
+	// Counter for tracking the number of stopped consumers
+	var consumersStopped int
+
+	// Main loop to consume messages
+	for {
+		// Iterate over each consumer
+		for _, consumer := range consumersQueue {
+			// Determine if a consumer should consume messages
+			shouldConsume := !consumer.stopped && checkPriorityMessages(consumersQueue, consumer)
+
+			if !shouldConsume {
+				continue
+			}
+
+			// If the consumer is still active, try to consume a message
+			select {
+			case <-consumer.stop:
+				// If a stop signal is received, stop the consumer and increase the count of stopped consumers
+				consumer.stopped = true
+				consumersStopped++
+			default:
+				// If no stop signal, consume the message
+				consumer.doConsume()
+			}
+		}
+
+		// If all consumers are stopped, exit the function
+		if consumersStopped == len(consumers) {
+			return
+		}
+	}
+}
+
+// checkPriorityMessages checks whether the given consumer can consume a message.
+// It checks all other consumers and allows a consumer to consume only if there are no higher priority consumers with messages to consume.
+func checkPriorityMessages(consumers []*consumer, currentConsumer *consumer) bool {
+	// Iterate over each consumer
+	for _, consumer := range consumers {
+
+		// Skip stopped consumers
+		if consumer.stopped {
+			continue
+		}
+
+		// If we reached the currentConsumer in the iteration, then all higher priority consumers were checked and they don't have any messages to consume.
+		// So, the currentConsumer is allowed to consume.
+		if consumer == currentConsumer {
+			return true
+		}
+
+		// Get the approximate number of messages in the queue for the consumer
+		qtMessages, err := consumer.approximateNumberOfMessages()
+		if err != nil {
+			logrus.WithError(err).Errorf("Failed to get approximate number of messages for consumer %s", consumer.config.QueueUrl)
+			continue
+		}
+
+		// If any higher priority consumer has messages to consume, then the currentConsumer should not consume.
+		if len(consumer.qos)+qtMessages > 0 {
+			logrus.Debugf("Higher priority consumer %s has messages to consume, skipping current consumer %s", consumer.config.QueueUrl, currentConsumer.config.QueueUrl)
+			return false
+		}
+	}
+
+	// If no consumers were found to have messages, the currentConsumer can consume.
+	return true
+}
+
+// approximateNumberOfMessages is a method on the consumer type that gets the approximate number of messages in the queue.
+// It uses AWS SQS's GetQueueAttributes API to fetch the ApproximateNumberOfMessages attribute,
+// which gives an estimate of the number of visible messages in the queue.
+func (c *consumer) approximateNumberOfMessages() (int, error) {
+	// Request to get queue attributes from AWS SQS
+	result, err := c.sqs.GetQueueAttributes(&sqs.GetQueueAttributesInput{
+		QueueUrl:       aws.String(c.config.QueueUrl),                                            // Specify the queue URL from consumer config
+		AttributeNames: []*string{aws.String(sqs.QueueAttributeNameApproximateNumberOfMessages)}, // Specify the attribute we want to fetch
+	})
+
+	// If there's an error in fetching the queue attributes, return 0 and the error
+	if err != nil {
+		return 0, err
+	}
+
+	// If the fetch was successful, convert the returned attribute (which is a string) to an integer
+	return strconv.Atoi(*result.Attributes[sqs.QueueAttributeNameApproximateNumberOfMessages])
 }
 
 func (c *consumer) doClose() {
