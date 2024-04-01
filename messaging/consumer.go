@@ -24,6 +24,7 @@ type EventHandler func(Event) error
 
 type Consumer interface {
 	Subscribe(action string, handler EventHandler, options *SubscribeOptions) error
+	SubscribeWithoutSNS(handlerFn EventHandler, options *SubscribeOptions) error
 	Unsubscribe(action string) error
 	BindActions(actions ...string) error
 	UnbindActions(actions ...string) error
