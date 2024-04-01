@@ -384,9 +384,12 @@ func (c *consumer) doConsume() {
 // Receiving duplicate messages may happen using more than one consumer if not processing in VisibilityTimeout.
 func (c *consumer) Consume() {
 	logrus.Info("Registered handlers:")
-
-	for _, handler := range c.handlers {
-		logrus.Infof("  %s", handler.action)
+	if c.hasAction {
+		for _, handler := range c.handlers {
+			logrus.Infof("[SQS: %s] [Action: %s]\n", c.config.QueueUrl, handler.action)
+		}
+	} else {
+		logrus.Infof("[SQS: %s] [Action: NO ACTION]\n", c.config.QueueUrl)
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -414,15 +417,19 @@ func PriorityConsume(consumers []messaging.Consumer) {
 
 	// Logging the registered handlers for each consumer
 	for priority, c := range consumers {
-		actualConsumer, ok := c.(*consumer) // Casting to *consumer
+		currentConsumer, ok := c.(*consumer) // Casting to *consumer
 		if !ok {
 			logrus.Error("Failed to cast consumer to consumer type")
 			return
 		}
-		for _, handler := range actualConsumer.handlers {
-			logrus.Infof("  %s (priority %d)", handler.action, priority)
+		if currentConsumer.hasAction {
+			for _, handler := range currentConsumer.handlers {
+				logrus.Infof("[SQS: %s] [Action: %s] (priority %d)\n", currentConsumer.config.QueueUrl, handler.action, priority)
+			}
+		} else {
+			logrus.Infof("[SQS: %s] [Action: NO ACTION] ((priority %d)\n", currentConsumer.config.QueueUrl, priority)
 		}
-		consumersQueue[priority] = actualConsumer
+		consumersQueue[priority] = currentConsumer
 	}
 
 	// Counter for tracking the number of stopped consumers
