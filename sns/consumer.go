@@ -81,18 +81,20 @@ type handler struct {
 }
 
 type consumer struct {
-	sqs                 *sqs.SQS
-	stop                chan bool
-	qos                 chan bool
-	config              *ConsumerConfig
-	receiveMessageInput *sqs.ReceiveMessageInput
-	m                   sync.RWMutex
-	wg                  sync.WaitGroup
-	handlers            map[string]handler
-	processingMessages  map[string]bool
-	mProcessingMessages sync.RWMutex
-	closeOnce           sync.Once
-	stopped             bool
+	hasAction            bool
+	sqs                  *sqs.SQS
+	stop                 chan bool
+	qos                  chan bool
+	config               *ConsumerConfig
+	receiveMessageInput  *sqs.ReceiveMessageInput
+	m                    sync.RWMutex
+	wg                   sync.WaitGroup
+	handlers             map[string]handler
+	handlerWithoutAction handler
+	processingMessages   map[string]bool
+	mProcessingMessages  sync.RWMutex
+	closeOnce            sync.Once
+	stopped              bool
 }
 
 func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
@@ -167,7 +169,20 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 		options: options,
 		fn:      handlerFn,
 	}
+	c.hasAction = true
+	return nil
+}
 
+// Subscribe subscribes an handler without action. This handler will be called when no action is needed.
+func (c *consumer) SubscribeWithoutSNS(handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.handlerWithoutAction = handler{
+		options: options,
+		fn:      handlerFn,
+	}
+	c.hasAction = false
 	return nil
 }
 
@@ -220,7 +235,7 @@ func (c *consumer) callAndHandlePanic(event messaging.Event, fn messaging.EventH
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()
@@ -273,11 +288,19 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 		"body":       sns.Message,
 	})
 
-	handler, ok := c.getHandler(sns.TopicArn)
+	var handlerFunction handler
+	var ok bool
 
-	if !ok {
-		log.Error("Action not found.")
-		return
+	if c.hasAction {
+		handlerFunction, ok = c.getHandler(sns.TopicArn)
+
+		if !ok {
+			log.Error("Action not found.")
+			return
+		}
+	} else {
+		handlerFunction = c.handlerWithoutAction
+		handlerFunction.action = "[NO_ACTION] " + sns.TopicArn
 	}
 
 	// Check if message is already processing in goroutine.
@@ -324,10 +347,10 @@ func (c *consumer) handleMessage(message *sqs.Message) {
 		log.Debug("Message handled successfully.")
 	}(messaging.Event{
 		Id:        id,
-		Action:    handler.action,
+		Action:    handlerFunction.action,
 		Body:      []byte(sns.Message),
 		Timestamp: stringToTime(*message.Attributes["SentTimestamp"]),
-	}, handler.fn, receiptHandle)
+	}, handlerFunction.fn, receiptHandle)
 }
 
 func (c *consumer) doConsume() {
