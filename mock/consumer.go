@@ -18,6 +18,11 @@ func (c *Consumer) Subscribe(action string, handler messaging.EventHandler, opti
 	return args.Error(0)
 }
 
+func (c *Consumer) SubscribeWithoutSNS(handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
+	args := c.Called(handlerFn, options)
+	return args.Error(0)
+}
+
 func (c *Consumer) Unsubscribe(action string) error {
 	args := c.Called(action)
 	return args.Error(0)

@@ -340,6 +340,11 @@ func (c *consumer) Subscribe(action string, handlerFn messaging.EventHandler, op
 	return nil
 }
 
+// SubscribeWithoutSNS allows to subscribe an action handler without SNS.
+func (c *consumer) SubscribeWithoutSNS(handlerFn messaging.EventHandler, options *messaging.SubscribeOptions) error {
+	return c.Subscribe("", handlerFn, options)
+}
+
 // Unsubscribe allows to unsubscribe an action handler.
 func (c *consumer) Unsubscribe(action string) error {
 	idx := -1

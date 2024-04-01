@@ -386,10 +386,10 @@ func (c *consumer) Consume() {
 	logrus.Info("Registered handlers:")
 	if c.hasAction {
 		for _, handler := range c.handlers {
-			logrus.Infof("[SQS: %s] [Action: %s]\n", c.config.QueueUrl, handler.action)
+			logrus.Infof("[SQS: %s] [Action: %s]", c.config.QueueUrl, handler.action)
 		}
 	} else {
-		logrus.Infof("[SQS: %s] [Action: NO ACTION]\n", c.config.QueueUrl)
+		logrus.Infof("[SQS: %s] [Action: NO ACTION]", c.config.QueueUrl)
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -424,10 +424,10 @@ func PriorityConsume(consumers []messaging.Consumer) {
 		}
 		if currentConsumer.hasAction {
 			for _, handler := range currentConsumer.handlers {
-				logrus.Infof("[SQS: %s] [Action: %s] (priority %d)\n", currentConsumer.config.QueueUrl, handler.action, priority)
+				logrus.Infof("[SQS: %s] [Action: %s] (priority %d)", currentConsumer.config.QueueUrl, handler.action, priority)
 			}
 		} else {
-			logrus.Infof("[SQS: %s] [Action: NO ACTION] ((priority %d)\n", currentConsumer.config.QueueUrl, priority)
+			logrus.Infof("[SQS: %s] [Action: NO ACTION] (priority %d)", currentConsumer.config.QueueUrl, priority)
 		}
 		consumersQueue[priority] = currentConsumer
 	}
