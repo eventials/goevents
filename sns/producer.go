@@ -8,13 +8,23 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/eventials/goevents/messaging"
 	"github.com/sirupsen/logrus"
 )
 
+type SendMessageType int
+
+const (
+	SendWithAction SendMessageType = iota
+	SendWithQueue
+)
+
 type message struct {
-	action string
-	data   []byte
+	action      string
+	queue       string
+	messageType SendMessageType
+	data        []byte
 }
 
 type ProducerConfig struct {
@@ -50,6 +60,7 @@ type producer struct {
 	config        ProducerConfig
 	m             sync.Mutex
 	sns           *sns.SNS
+	sqs           *sqs.SQS
 	internalQueue chan message
 	closes        []chan bool
 	closed        bool
@@ -76,6 +87,7 @@ func NewProducer(config ProducerConfig) (messaging.Producer, error) {
 
 	p := &producer{
 		sns:           sns.New(sess),
+		sqs:           sqs.New(sess),
 		internalQueue: make(chan message),
 		config:        config,
 		closed:        false,
@@ -98,10 +110,19 @@ func MustNewProducer(config ProducerConfig) messaging.Producer {
 
 func (p *producer) Publish(action string, data []byte) {
 	p.internalQueue <- message{
-		action: action,
-		data:   data,
+		action:      action,
+		messageType: SendWithAction,
+		data:        data,
 	}
 
+}
+
+func (p *producer) PublishToQueue(queue string, data []byte) {
+	p.internalQueue <- message{
+		queue:       queue,
+		messageType: SendWithQueue,
+		data:        data,
+	}
 }
 
 func (p *producer) isClosed() bool {
@@ -116,24 +137,47 @@ func (p *producer) drainInternalQueue() {
 		retry := true
 
 		for retry && !p.isClosed() {
-			output, err := p.sns.Publish(&sns.PublishInput{
-				Message:  aws.String(string(m.data)),
-				TopicArn: aws.String(m.action),
-			})
+			if m.messageType == SendWithAction {
+				output, err := p.sns.Publish(&sns.PublishInput{
+					Message:  aws.String(string(m.data)),
+					TopicArn: aws.String(m.action),
+				})
 
-			if err != nil {
-				logrus.WithFields(logrus.Fields{
-					"message": m,
-					"error":   err,
-				}).Error("Failed to publish message.")
+				if err != nil {
+					logrus.WithFields(logrus.Fields{
+						"message": m,
+						"error":   err,
+					}).Error("Failed to publish message.")
 
-				time.Sleep(p.config.PublishInterval)
+					time.Sleep(p.config.PublishInterval)
+				} else {
+					logrus.WithFields(logrus.Fields{
+						"message_id": output.MessageId,
+					}).Debug("Successfully published message.")
+
+					retry = false
+				}
 			} else {
-				logrus.WithFields(logrus.Fields{
-					"message_id": output.MessageId,
-				}).Debug("Successfully published message.")
+				output, err := p.sqs.SendMessage(&sqs.SendMessageInput{
+					MessageBody:  aws.String(string(m.data)),
+					QueueUrl:     aws.String(m.queue),
+					DelaySeconds: aws.Int64(0),
+				})
 
-				retry = false
+				if err != nil {
+					logrus.WithFields(logrus.Fields{
+						"message": m,
+						"error":   err,
+					}).Error("Failed to publish message.")
+
+					time.Sleep(p.config.PublishInterval)
+				} else {
+					logrus.WithFields(logrus.Fields{
+						"message_id": output.MessageId,
+					}).Debug("Successfully published message.")
+
+					retry = false
+				}
 			}
 		}
 	}

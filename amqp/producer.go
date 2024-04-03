@@ -10,7 +10,6 @@ import (
 	"github.com/eventials/goevents/messaging"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -94,10 +93,15 @@ func (p *producer) Publish(action string, data []byte) {
 		DeliveryMode: amqplib.Persistent,
 		Timestamp:    now,
 		Body:         data,
-		Headers: amqp.Table{
+		Headers: amqplib.Table{
 			"x-epoch-milli": int64(now.UnixNano()/int64(time.Nanosecond)) / int64(time.Millisecond),
 		},
 	})
+}
+
+// PublishToQueue publishes a message to a queue.
+func (p *producer) PublishToQueue(queue string, data []byte) {
+	// not implemented yet
 }
 
 func (p *producer) publishAmqMessage(queue string, msg amqplib.Publishing) {
@@ -188,10 +192,6 @@ func (p *producer) setupTopology() error {
 	}
 
 	if p.exchangeName != "" {
-		if err != nil {
-			return err
-		}
-
 		err = channel.ExchangeDeclare(
 			p.exchangeName, // name
 			"topic",        // type
@@ -210,7 +210,7 @@ func (p *producer) setupTopology() error {
 	err = channel.Confirm(false)
 
 	if err != nil {
-		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		err = fmt.Errorf("channel could not be put into confirm mode: %s", err)
 		return err
 	}
 
@@ -315,7 +315,7 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()
@@ -345,8 +345,6 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 		err = ErrTimedout
 		return
 	}
-
-	return
 }
 
 func (p *producer) isClosed() bool {

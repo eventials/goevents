@@ -17,6 +17,10 @@ func (p *Producer) Publish(action string, data []byte) {
 	p.Called(action, data)
 }
 
+func (p *Producer) PublishToQueue(queue string, data []byte) {
+	p.Called(queue, data)
+}
+
 func (p *Producer) Close() {
 	p.Called()
 }
