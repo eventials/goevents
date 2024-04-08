@@ -124,6 +124,8 @@ func (p *producer) drainInternalQueue() {
 			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"message": m,
+					"topic":   m.action,
+					"data":    string(m.data),
 					"error":   err,
 				}).Error("Failed to publish message.")
 
