@@ -517,8 +517,15 @@ func (c *consumer) doConsume() error {
 		c.wg.Add(1)
 
 		go func(msg amqplib.Delivery) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.WithFields(logrus.Fields{
+						"error": r,
+					}).Error("Recovered from panic.")
+				}
+				c.wg.Done()
+			}()
 			c.dispatch(msg)
-			c.wg.Done()
 		}(m)
 	}
 
