@@ -548,29 +548,30 @@ func (c *consumer) Consume() {
 	}
 
 	rs := c.conn.NotifyReestablish()
+	for {
+		for !c.isClosed() {
+			if !c.conn.IsConnected() {
+				logger.Info("Connection not established. Waiting connection to be reestablished.")
+				<-rs
+				continue
+			}
 
-	for !c.isClosed() {
-		if !c.conn.IsConnected() {
-			logger.Info("Connection not established. Waiting connection to be reestablished.")
+			err := c.doConsume()
 
-			<-rs
-
-			continue
+			if err == nil {
+				logger.WithFields(logrus.Fields{
+					"queue":  c.queueName,
+					"closed": c.closed,
+				}).Info("Consumption finished.")
+			} else {
+				logger.WithFields(logrus.Fields{
+					"queue": c.queueName,
+					"error": err,
+				}).Error("Error consuming events.")
+			}
 		}
-
-		err := c.doConsume()
-
-		if err == nil {
-			logger.WithFields(logrus.Fields{
-				"queue":  c.queueName,
-				"closed": c.closed,
-			}).Info("Consumption finished.")
-		} else {
-			logger.WithFields(logrus.Fields{
-				"queue": c.queueName,
-				"error": err,
-			}).Error("Error consuming events.")
-		}
+		logger.Info("AMQP closed. Retrying in 30 seconds...")
+		time.Sleep(30 * time.Second)
 	}
 }
 
