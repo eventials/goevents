@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/eventials/goevents/amqp"
+	"github.com/eventials/goevents/messaging"
 )
 
 func main() {
@@ -40,7 +41,12 @@ func main() {
 				fmt.Println("ProducerA closed for good")
 				return
 			default:
-				producerA.Publish("object.eventA", []byte("some data"))
+				input := messaging.MessageInput{
+					Action:         "object.eventA",
+					Data:           []byte("some data"),
+					MessageGroupID: nil,
+				}
+				producerA.Publish(input)
 			}
 		}
 	}()
@@ -52,7 +58,12 @@ func main() {
 				fmt.Println("ProducerB closed for good")
 				return
 			default:
-				producerB.Publish("object.eventC", []byte("some data"))
+				input := messaging.MessageInput{
+					Action:         "object.eventC",
+					Data:           []byte("some data"),
+					MessageGroupID: nil,
+				}
+				producerB.Publish(input)
 			}
 		}
 	}()

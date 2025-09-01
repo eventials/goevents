@@ -74,7 +74,12 @@ func TestSubscribeActions(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("my_action_1", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "my_action_1",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		select {
 		case <-func1:
@@ -118,7 +123,12 @@ func TestSubscribeActionsByBindAfterConsume(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("my_action_1", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "my_action_1",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		select {
 		case <-func1:
@@ -162,7 +172,12 @@ func TestSubscribeActionsUnbindAfterConsume(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("my_action_2", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "my_action_2",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		select {
 		case <-func1:
@@ -204,7 +219,12 @@ func TestSubscribeWildcardActions(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("webinar.state_changed", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "webinar.state_changed",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		select {
 		case <-func1:
@@ -248,7 +268,12 @@ func TestSubscribeWildcardActionOrder1(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("webinar.state_changed", []byte(""))
+			input := messaging.MessageInput{
+				Action:         "webinar.state_changed",
+				Data:           []byte(""),
+				MessageGroupID: nil,
+			}
+			p.Publish(input)
 
 			select {
 			case <-func1:
@@ -292,7 +317,12 @@ func TestSubscribeWildcardActionOrder2(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("webinar.state_changed", []byte(""))
+			input := messaging.MessageInput{
+				Action:         "webinar.state_changed",
+				Data:           []byte(""),
+				MessageGroupID: nil,
+			}
+			p.Publish(input)
 
 			select {
 			case <-func1:
@@ -335,12 +365,16 @@ func TestDontRetryMessageIfFailsToProcess(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("my_action", []byte(""))
-
-			select {
-			case <-time.After(3 * time.Second):
-				assert.Equal(t, 1, timesCalled, "Consumer got wrong quantity of messages.")
+			input := messaging.MessageInput{
+				Action:         "my_action",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(3 * time.Second)
+			assert.Equal(t, 1, timesCalled, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -379,12 +413,16 @@ func TestRetryMessageIfFailsToProcess(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("my_action", []byte(""))
-
-			select {
-			case <-time.After(3 * time.Second):
-				assert.True(t, timesCalled >= 1 || timesCalled <= 5, "Consumer got wrong quantity of messages.")
+			input := messaging.MessageInput{
+				Action:         "my_action",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(3 * time.Second)
+			assert.True(t, timesCalled >= 1 && timesCalled <= 5, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -423,12 +461,16 @@ func TestRetryMessageIfPanicsToProcess(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("my_action", []byte(""))
-
-			select {
-			case <-time.After(3 * time.Second):
-				assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
+			input := messaging.MessageInput{
+				Action:         "my_action",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(3 * time.Second)
+			assert.Equal(t, 2, timesCalled, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -483,13 +525,17 @@ func TestRetryMessageToTheSameQueue(t *testing.T) {
 	if assert.Nil(t, err) {
 		defer p.Close()
 
-		p.Publish("my_action", []byte(""))
-
-		select {
-		case <-time.After(3 * time.Second):
-			assert.Equal(t, 2, timesCalled1, "Consumer 1 got wrong quantity of messages.")
-			assert.Equal(t, 1, timesCalled2, "Consumer 2 got wrong quantity of messages.")
+		input := messaging.MessageInput{
+			Action:         "my_action",
+			Data:           []byte(""),
+			MessageGroupID: nil,
 		}
+		p.Publish(input)
+
+		time.Sleep(3 * time.Second)
+		assert.Equal(t, 2, timesCalled1, "Consumer 1 got wrong quantity of messages.")
+		assert.Equal(t, 1, timesCalled2, "Consumer 2 got wrong quantity of messages.")
+
 	}
 }
 
@@ -523,12 +569,16 @@ func TestActionExitsMaxRetries(t *testing.T) {
 	if assert.Nil(t, err) {
 		defer p.Close()
 
-		p.Publish("my_action", []byte(""))
-
-		select {
-		case <-time.After(3 * time.Second):
-			assert.True(t, timesCalled >= 4 || timesCalled <= 6, "Consumer got wrong quantity of messages.")
+		input := messaging.MessageInput{
+			Action:         "my_action",
+			Data:           []byte(""),
+			MessageGroupID: nil,
 		}
+		p.Publish(input)
+
+		time.Sleep(3 * time.Second)
+		assert.True(t, timesCalled >= 4 && timesCalled <= 6, "Consumer got wrong quantity of messages.")
+
 	}
 }
 
@@ -561,12 +611,16 @@ func TestActionExitsMaxRetriesWhenDelayed(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("my_action", []byte(""))
-
-			select {
-			case <-time.After(3 * time.Second):
-				assert.True(t, timesCalled > 1 || timesCalled <= 4, "Consumer got wrong quantity of messages.")
+			input := messaging.MessageInput{
+				Action:         "my_action",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(3 * time.Second)
+			assert.True(t, timesCalled > 1 && timesCalled <= 4, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -600,12 +654,16 @@ func TestActionExitsMaxRetriesWhenDelayedWindow(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("my_action", []byte(""))
-
-			select {
-			case <-time.After(3 * time.Second):
-				assert.True(t, timesCalled > 1 || timesCalled <= 6, "Consumer got wrong quantity of messages.")
+			input := messaging.MessageInput{
+				Action:         "my_action",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(1 * time.Second)
+			assert.True(t, timesCalled > 1 && timesCalled <= 6, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -652,16 +710,25 @@ func TestActionRetryTimeout(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("test1", []byte(""))
+			input := messaging.MessageInput{
+				Action:         "test1",
+				Data:           []byte(""),
+				MessageGroupID: nil,
+			}
+			p.Publish(input)
 
 			time.Sleep(200 * time.Millisecond)
-			p.Publish("test2", []byte(""))
-
-			select {
-			case <-time.After(1 * time.Second):
-				assert.True(t, myActionTimesCalled > 1 || myActionTimesCalled <= 4, "Consumer got wrong quantity of messages.")
-				assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
+			input = messaging.MessageInput{
+				Action:         "test2",
+				Data:           []byte(""),
+				MessageGroupID: nil,
 			}
+			p.Publish(input)
+
+			time.Sleep(1 * time.Second)
+			assert.True(t, myActionTimesCalled > 1 && myActionTimesCalled <= 4, "Consumer got wrong quantity of messages.")
+			assert.Equal(t, 1, myAction2TimesCalled, "Consumer got wrong quantity of messages.")
+
 		}
 	}
 }
@@ -697,7 +764,12 @@ func TestConsumePrefetch(t *testing.T) {
 			defer p.Close()
 
 			for i := 0; i < 10; i++ {
-				p.Publish("my_action", []byte(""))
+				input := messaging.MessageInput{
+					Action:         "my_action",
+					Data:           []byte(""),
+					MessageGroupID: nil,
+				}
+				p.Publish(input)
 			}
 
 			<-time.After(100 * time.Millisecond)
@@ -760,7 +832,12 @@ func TestBlankQueueWithPrefix(t *testing.T) {
 		if assert.Nil(t, err) {
 			defer p.Close()
 
-			p.Publish("TestBlankQueueWithPrefix", []byte(""))
+			input := messaging.MessageInput{
+				Action:         "TestBlankQueueWithPrefix",
+				Data:           []byte(""),
+				MessageGroupID: nil,
+			}
+			p.Publish(input)
 
 			<-wait
 			assert.Equal(t, 1, myActionTimesCalled, "Consumer got wrong quantity of messages.")
@@ -804,7 +881,12 @@ func TestCallEventAckMethod(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("multi", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "multi",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		select {
 		case <-func1:
@@ -846,7 +928,12 @@ func TestCallEventNackMethod(t *testing.T) {
 
 		assert.Nil(t, err)
 
-		p.Publish("multi", []byte(""))
+		input := messaging.MessageInput{
+			Action:         "multi",
+			Data:           []byte(""),
+			MessageGroupID: nil,
+		}
+		p.Publish(input)
 
 		// Wait for requeue
 		time.Sleep(10 * time.Second)

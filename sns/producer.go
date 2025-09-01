@@ -13,8 +13,9 @@ import (
 )
 
 type message struct {
-	action string
-	data   []byte
+	action         string
+	data           []byte
+	messageGroupID *string
 }
 
 type ProducerConfig struct {
@@ -96,12 +97,12 @@ func MustNewProducer(config ProducerConfig) messaging.Producer {
 	return p
 }
 
-func (p *producer) Publish(action string, data []byte) {
+func (p *producer) Publish(input messaging.MessageInput) {
 	p.internalQueue <- message{
-		action: action,
-		data:   data,
+		action:         input.Action,
+		data:           input.Data,
+		messageGroupID: input.MessageGroupID,
 	}
-
 }
 
 func (p *producer) isClosed() bool {
@@ -117,8 +118,9 @@ func (p *producer) drainInternalQueue() {
 
 		for retry && !p.isClosed() {
 			output, err := p.sns.Publish(&sns.PublishInput{
-				Message:  aws.String(string(m.data)),
-				TopicArn: aws.String(m.action),
+				Message:        aws.String(string(m.data)),
+				TopicArn:       aws.String(m.action),
+				MessageGroupId: m.messageGroupID,
 			})
 
 			if err != nil {

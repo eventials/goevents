@@ -42,12 +42,15 @@ func TestPublish(t *testing.T) {
 				p, err := NewProducer(conn, "webhooks")
 
 				if assert.Nil(t, err) {
-					p.Publish("action.name", []byte(""))
-
-					select {
-					case <-time.After(1 * time.Second):
-						assert.Equal(t, 1, timesCalled, "Message wasn't published.")
+					input := messaging.MessageInput{
+						Action:         "action.name",
+						Data:           []byte(""),
+						MessageGroupID: nil,
 					}
+					p.Publish(input)
+
+					time.Sleep(1 * time.Second)
+					assert.Equal(t, 1, timesCalled, "Message wasn't published.")
 				}
 			}
 		}
@@ -89,13 +92,16 @@ func TestPublishMultipleTimes(t *testing.T) {
 
 				if assert.Nil(t, err) {
 					for i := 0; i < 5; i++ {
-						p.Publish("action.name", []byte(""))
+						input := messaging.MessageInput{
+							Action:         "action.name",
+							Data:           []byte(""),
+							MessageGroupID: nil,
+						}
+						p.Publish(input)
 					}
 
-					select {
-					case <-time.After(1 * time.Second):
-						assert.Equal(t, 5, timesCalled, "One or more messages weren't published.")
-					}
+					time.Sleep(1 * time.Second)
+					assert.Equal(t, 5, timesCalled, "One or more messages weren't published.")
 				}
 			}
 		}

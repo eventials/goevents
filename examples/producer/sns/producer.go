@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/eventials/goevents/messaging"
 	"github.com/eventials/goevents/sns"
 )
 
@@ -23,7 +24,11 @@ func main() {
 
 	go func() {
 		for {
-			producer.Publish("arn:aws:sns:us-east-1:0000000000:test2", []byte("some data"))
+			input := messaging.MessageInput{
+				Action: "arn:aws:sns:us-east-1:0000000000:test2",
+				Data:   []byte("some data"),
+			}
+			producer.Publish(input)
 
 			time.Sleep(20 * time.Second)
 		}

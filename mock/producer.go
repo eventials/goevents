@@ -13,8 +13,8 @@ func NewMockProducer() messaging.Producer {
 	return &Producer{}
 }
 
-func (p *Producer) Publish(action string, data []byte) {
-	p.Called(action, data)
+func (p *Producer) Publish(input messaging.MessageInput) {
+	p.Called(input.Action, input.Data, input.MessageGroupID)
 }
 
 func (p *Producer) Close() {

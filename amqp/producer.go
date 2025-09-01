@@ -79,7 +79,7 @@ func NewProducerConfig(c messaging.Connection, exchange string, config ProducerC
 }
 
 // Publish publishes an action.
-func (p *producer) Publish(action string, data []byte) {
+func (p *producer) Publish(input messaging.MessageInput) {
 	// ignore messages published to a closed producer
 	if p.isClosed() {
 		return
@@ -89,11 +89,11 @@ func (p *producer) Publish(action string, data []byte) {
 
 	now := time.Now().UTC()
 
-	p.publishAmqMessage(action, amqplib.Publishing{
+	p.publishAmqMessage(input.Action, amqplib.Publishing{
 		MessageId:    messageID,
 		DeliveryMode: amqplib.Persistent,
 		Timestamp:    now,
-		Body:         data,
+		Body:         input.Data,
 		Headers: amqp.Table{
 			"x-epoch-milli": int64(now.UnixNano()/int64(time.Nanosecond)) / int64(time.Millisecond),
 		},
@@ -188,10 +188,6 @@ func (p *producer) setupTopology() error {
 	}
 
 	if p.exchangeName != "" {
-		if err != nil {
-			return err
-		}
-
 		err = channel.ExchangeDeclare(
 			p.exchangeName, // name
 			"topic",        // type
@@ -210,7 +206,7 @@ func (p *producer) setupTopology() error {
 	err = channel.Confirm(false)
 
 	if err != nil {
-		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		err = fmt.Errorf("channel could not be put into confirm mode: %s", err)
 		return err
 	}
 
@@ -315,7 +311,7 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()
@@ -345,8 +341,6 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 		err = ErrTimedout
 		return
 	}
-
-	return
 }
 
 func (p *producer) isClosed() bool {
