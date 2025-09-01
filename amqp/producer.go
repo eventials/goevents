@@ -164,24 +164,6 @@ func (p *producer) Close() {
 	p.notifyProducerClosed()
 }
 
-// changeChannel takes a new channel to the queue,
-// and updates the channel listeners to reflect this.
-func (p *producer) changeChannel(channel *amqplib.Channel) {
-	// protect atomic swaps of the channel pointer and notify channels
-	p.reconfMu.Lock()
-	defer p.reconfMu.Unlock()
-
-	p.channel = channel
-
-	p.notifyChanClose = make(chan *amqplib.Error, 1)
-	p.channel.NotifyClose(p.notifyChanClose)
-
-	p.notifyConfirm = make(chan amqplib.Confirmation, 1024)
-	p.channel.NotifyPublish(p.notifyConfirm)
-
-	p.setChannelReady(true)
-}
-
 func (p *producer) setupTopology() error {
 	log.WithFields(log.Fields{
 		"type":     "goevents",
