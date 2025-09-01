@@ -10,7 +10,6 @@ import (
 	"github.com/eventials/goevents/messaging"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 	amqplib "github.com/streadway/amqp"
 )
 
@@ -23,7 +22,7 @@ type message struct {
 	msg    amqplib.Publishing
 }
 
-// producer holds a amqp connection and channel to publish messages to.
+// Producer holds a amqp connection and channel to publish messages to.
 type producer struct {
 	m               sync.RWMutex
 	wg              sync.WaitGroup
@@ -41,7 +40,7 @@ type producer struct {
 	channelReady bool
 	closes       []chan bool
 
-	// --- NOVOS CAMPOS: sincronização de (re)configuração e gate de prontidão ---
+	// --- NEW FIELDS: synchronization for (re)configuration and readiness gate ---
 	readyCh  chan struct{}
 	reconfMu sync.RWMutex
 }
@@ -68,10 +67,10 @@ func NewProducerConfig(c messaging.Connection, exchange string, config ProducerC
 		config:        config,
 		internalQueue: make(chan message),
 		exchangeName:  exchange,
-		readyCh:       make(chan struct{}), // gate inicial bloqueado até topologia pronta
+		readyCh:       make(chan struct{}), // initial gate blocked until topology is ready
 	}
 
-	// configura topologia inicial sob lock e só então libera o gate
+	// configure initial topology under lock and only then release the gate
 	if err := producer.setupTopology(); err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func (p *producer) Publish(action string, data []byte) {
 		DeliveryMode: amqplib.Persistent,
 		Timestamp:    now,
 		Body:         data,
-		Headers: amqp.Table{
+		Headers: amqplib.Table{
 			"x-epoch-milli": int64(now.UnixNano()/int64(time.Nanosecond)) / int64(time.Millisecond),
 		},
 	})
@@ -168,7 +167,7 @@ func (p *producer) Close() {
 // changeChannel takes a new channel to the queue,
 // and updates the channel listeners to reflect this.
 func (p *producer) changeChannel(channel *amqplib.Channel) {
-	// protegem as trocas atômicas do ponteiro de canal e canais de notify
+	// protect atomic swaps of the channel pointer and notify channels
 	p.reconfMu.Lock()
 	defer p.reconfMu.Unlock()
 
@@ -189,7 +188,7 @@ func (p *producer) setupTopology() error {
 		"sub_type": "producer",
 	}).Debug("Setting up topology...")
 
-	// Evita corridas com o drain e com outros caminhos de reconexão
+	// Prevents races with the drain and other reconnection paths
 	p.reconfMu.Lock()
 	defer p.reconfMu.Unlock()
 
@@ -199,10 +198,6 @@ func (p *producer) setupTopology() error {
 	}
 
 	if p.exchangeName != "" {
-		if err != nil { // redundante, mas preservado do código original
-			return err
-		}
-
 		err = channel.ExchangeDeclare(
 			p.exchangeName, // name
 			"topic",        // type
@@ -218,15 +213,15 @@ func (p *producer) setupTopology() error {
 		}
 	}
 
-	// Ativa confirm mode ANTES de publicar qualquer coisa
+	// Enable confirm mode BEFORE publishing anything
 	err = channel.Confirm(false)
 	if err != nil {
 		channel.Close()
-		err = fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		err = fmt.Errorf("channel could not be put into confirm mode: %s", err)
 		return err
 	}
 
-	// Troca atômica do canal e listeners
+	// Atomic swap of the channel and listeners
 	p.channel = channel
 	p.notifyChanClose = make(chan *amqplib.Error, 1)
 	p.channel.NotifyClose(p.notifyChanClose)
@@ -282,20 +277,20 @@ func (p *producer) handleReestablishedConnnection() {
 	rs := p.conn.NotifyReestablish()
 
 	for !p.isClosed() {
-		// true => conexão caiu; false => apenas o channel caiu
+		// true => connection dropped; false => only the channel dropped
 		connectionLost := p.waitConnectionLost()
 
 		if connectionLost {
-			// Espera reconexão física da connection
+			// Wait for physical reconnection of the connection
 			<-rs
 		}
 
-		// Bloqueia publicação até topologia pronta
+		// Block publishing until topology is ready
 		p.reconfMu.Lock()
 		p.readyCh = make(chan struct{})
 		p.reconfMu.Unlock()
 
-		// Retry com backoff até reconstruir topologia
+		// Retry with backoff until topology is rebuilt
 		for attempt := 0; ; attempt++ {
 			err := p.setupTopology()
 			if err == nil {
@@ -313,7 +308,7 @@ func (p *producer) handleReestablishedConnnection() {
 				"error":    err,
 			}).Error("Error setting up topology after reconnection.")
 
-			// usa PublishInterval como backoff base
+			// use PublishInterval as base backoff
 			sleep := p.config.PublishInterval
 			if sleep <= 0 {
 				sleep = 2 * time.Second
@@ -329,12 +324,12 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 		return
 	}
 
-	// Aguarda gate de prontidão (protege contra corrida de reconexão)
+	// Wait for readiness gate (protects against reconnection race)
 	select {
 	case <-p.readyCh:
 		// ok
 	default:
-		// se ainda não está pronto, espera bloquear
+		// if not ready yet, wait blocking
 		<-p.readyCh
 	}
 
@@ -360,12 +355,12 @@ func (p *producer) publishMessage(msg amqplib.Publishing, queue string) (err err
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()
 
-	// snapshot atômico do channel sob leitura
+	// atomic snapshot of the channel under read lock
 	p.reconfMu.RLock()
 	ch := p.channel
 	nc := p.notifyConfirm
@@ -407,10 +402,10 @@ func (p *producer) drainInternalQueue() {
 		retry := true
 
 		for retry {
-			// Aguarda canal pronto
+			// Wait for channel to be ready
 			select {
 			case <-p.readyCh:
-				// prossegue
+				// proceed
 			default:
 				<-p.readyCh
 			}
@@ -431,7 +426,7 @@ func (p *producer) drainInternalQueue() {
 				if err == ErrTimedout {
 					log.Warn("Closing producer channel due timeout wating msg confirmation")
 
-					// force close to rodar setupTopology via handleReestablishedConnnection
+					// force close to run setupTopology via handleReestablishedConnnection
 					p.setChannelReady(false)
 					if p.channel != nil {
 						_ = p.channel.Close()
