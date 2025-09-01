@@ -220,7 +220,7 @@ func (c *consumer) callAndHandlePanic(event messaging.Event, fn messaging.EventH
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()

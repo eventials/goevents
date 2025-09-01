@@ -163,7 +163,7 @@ func (c *consumer) callAndHandlePanic(msg amqplib.Delivery, h *handler) (err err
 			case error:
 				err = x
 			default:
-				err = errors.New("Unknown panic")
+				err = errors.New("unknown panic")
 			}
 		}
 	}()
@@ -238,7 +238,7 @@ func (c *consumer) publishMessage(msg amqplib.Publishing, queue string) error {
 	defer channel.Close()
 
 	if err := channel.Confirm(false); err != nil {
-		return fmt.Errorf("Channel could not be put into confirm mode: %s", err)
+		return fmt.Errorf("channel could not be put into confirm mode: %s", err)
 	}
 
 	confirms := channel.NotifyPublish(make(chan amqplib.Confirmation, 1))

@@ -24,7 +24,6 @@ func main() {
 	})
 
 	defer consumer.Close()
-	defer consumer.Close()
 
 	consumer.Subscribe("arn:aws:sns:us-east-1:0000000000:test", func(e messaging.Event) error {
 		fmt.Println("Action:\t", e.Action)
