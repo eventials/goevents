@@ -40,7 +40,7 @@ type producer struct {
 	channelReady bool
 	closes       []chan bool
 
-	// --- NEW FIELDS: synchronization for (re)configuration and readiness gate ---
+	// synchronization for (re)configuration and readiness gate
 	readyCh  chan struct{}
 	reconfMu sync.RWMutex
 }
