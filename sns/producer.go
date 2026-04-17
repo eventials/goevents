@@ -76,6 +76,7 @@ func NewProducer(config ProducerConfig) (messaging.Producer, error) {
 	}
 
 	if _, credErr := sess.Config.Credentials.Get(); credErr != nil {
+		logrus.Info("[Producer] No ambient credentials found; falling back to static credentials.")
 		if config.AccessKey == "" {
 			return nil, ErrEmptyAccessKey
 		}

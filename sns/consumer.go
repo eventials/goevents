@@ -128,6 +128,7 @@ func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
 	}
 
 	if _, credErr := sess.Config.Credentials.Get(); credErr != nil {
+		logrus.Info("[Consumer] No ambient credentials found; falling back to static credentials.")
 		if config.AccessKey == "" {
 			return nil, ErrEmptyAccessKey
 		}
