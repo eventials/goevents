@@ -56,24 +56,7 @@ type producer struct {
 	closeOnce     sync.Once
 }
 
-func NewProducer(config ProducerConfig) (messaging.Producer, error) {
-	if err := config.isValid(); err != nil {
-		return nil, err
-	}
-
-	config.setDefaults()
-
-	creds := credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, "")
-
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(config.Region),
-		Credentials: creds,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
+func newProducerFromSession(config ProducerConfig, sess *session.Session) messaging.Producer {
 	p := &producer{
 		sns:           sns.New(sess),
 		internalQueue: make(chan message),
@@ -83,11 +66,58 @@ func NewProducer(config ProducerConfig) (messaging.Producer, error) {
 
 	go p.drainInternalQueue()
 
-	return p, nil
+	return p
+}
+
+func NewProducer(config ProducerConfig) (messaging.Producer, error) {
+	if err := config.isValid(); err != nil {
+		return nil, err
+	}
+
+	config.setDefaults()
+
+	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String(config.Region),
+		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return newProducerFromSession(config, sess), nil
 }
 
 func MustNewProducer(config ProducerConfig) messaging.Producer {
 	p, err := NewProducer(config)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return p
+}
+
+func NewProducerWithRoles(config ProducerConfig) (messaging.Producer, error) {
+	if config.Region == "" {
+		return nil, ErrEmptyConfig
+	}
+
+	config.setDefaults()
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(config.Region),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return newProducerFromSession(config, sess), nil
+}
+
+func MustNewProducerWithRoles(config ProducerConfig) messaging.Producer {
+	p, err := NewProducerWithRoles(config)
 
 	if err != nil {
 		panic(err)
