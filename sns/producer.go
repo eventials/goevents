@@ -35,14 +35,6 @@ func (p *ProducerConfig) isValid() error {
 		return ErrEmptyConfig
 	}
 
-	if p.AccessKey == "" {
-		return ErrEmptyAccessKey
-	}
-
-	if p.SecretKey == "" {
-		return ErrEmptySecretKey
-	}
-
 	return nil
 }
 
@@ -77,12 +69,26 @@ func NewProducer(config ProducerConfig) (messaging.Producer, error) {
 	config.setDefaults()
 
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(config.Region),
-		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		Region: aws.String(config.Region),
 	})
-
 	if err != nil {
 		return nil, err
+	}
+
+	if _, credErr := sess.Config.Credentials.Get(); credErr != nil {
+		if config.AccessKey == "" {
+			return nil, ErrEmptyAccessKey
+		}
+		if config.SecretKey == "" {
+			return nil, ErrEmptySecretKey
+		}
+		sess, err = session.NewSession(&aws.Config{
+			Region:      aws.String(config.Region),
+			Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return newProducerFromSession(config, sess), nil
@@ -90,34 +96,6 @@ func NewProducer(config ProducerConfig) (messaging.Producer, error) {
 
 func MustNewProducer(config ProducerConfig) messaging.Producer {
 	p, err := NewProducer(config)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return p
-}
-
-func NewProducerWithRoles(config ProducerConfig) (messaging.Producer, error) {
-	if config.Region == "" {
-		return nil, ErrEmptyConfig
-	}
-
-	config.setDefaults()
-
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(config.Region),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return newProducerFromSession(config, sess), nil
-}
-
-func MustNewProducerWithRoles(config ProducerConfig) messaging.Producer {
-	p, err := NewProducerWithRoles(config)
 
 	if err != nil {
 		panic(err)

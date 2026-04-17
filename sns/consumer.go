@@ -63,14 +63,6 @@ func (c *ConsumerConfig) isValid() error {
 		return ErrEmptyConfig
 	}
 
-	if c.AccessKey == "" {
-		return ErrEmptyAccessKey
-	}
-
-	if c.SecretKey == "" {
-		return ErrEmptySecretKey
-	}
-
 	return nil
 }
 
@@ -129,12 +121,26 @@ func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
 	config.setDefaults()
 
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(config.Region),
-		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		Region: aws.String(config.Region),
 	})
-
 	if err != nil {
 		return nil, err
+	}
+
+	if _, credErr := sess.Config.Credentials.Get(); credErr != nil {
+		if config.AccessKey == "" {
+			return nil, ErrEmptyAccessKey
+		}
+		if config.SecretKey == "" {
+			return nil, ErrEmptySecretKey
+		}
+		sess, err = session.NewSession(&aws.Config{
+			Region:      aws.String(config.Region),
+			Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return newConsumerFromSession(config, sess), nil
@@ -142,34 +148,6 @@ func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
 
 func MustNewConsumer(config *ConsumerConfig) messaging.Consumer {
 	consumer, err := NewConsumer(config)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return consumer
-}
-
-func NewConsumerWithRoles(config *ConsumerConfig) (messaging.Consumer, error) {
-	if config == nil {
-		return nil, ErrEmptyConfig
-	}
-
-	config.setDefaults()
-
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(config.Region),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return newConsumerFromSession(config, sess), nil
-}
-
-func MustNewConsumerWithRoles(config *ConsumerConfig) messaging.Consumer {
-	consumer, err := NewConsumerWithRoles(config)
 
 	if err != nil {
 		panic(err)
