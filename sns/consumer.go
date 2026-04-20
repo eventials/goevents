@@ -19,6 +19,8 @@ var (
 	ErrEmptyConfig    = errors.New("empty config")
 	ErrEmptyAccessKey = errors.New("empty access key")
 	ErrEmptySecretKey = errors.New("empty secret key")
+	ErrEmptyRegion    = errors.New("empty region")
+	ErrEmptyQueueURL  = errors.New("empty queue url")
 )
 
 type snsMessagePayload struct {
@@ -64,11 +66,11 @@ func (c *ConsumerConfig) isValid() error {
 	}
 
 	if c.Region == "" {
-		return errors.New("empty region")
+		return ErrEmptyRegion
 	}
 
 	if c.QueueUrl == "" {
-		return errors.New("empty queue url")
+		return ErrEmptyQueueURL
 	}
 
 	return nil
