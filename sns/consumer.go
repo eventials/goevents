@@ -63,6 +63,14 @@ func (c *ConsumerConfig) isValid() error {
 		return ErrEmptyConfig
 	}
 
+	if c.Region == "" {
+		return errors.New("empty region")
+	}
+
+	if c.QueueUrl == "" {
+		return errors.New("empty queue url")
+	}
+
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package sns
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -33,6 +34,10 @@ func (p *ProducerConfig) setDefaults() {
 func (p *ProducerConfig) isValid() error {
 	if p == nil {
 		return ErrEmptyConfig
+	}
+
+	if p.Region == "" {
+		return errors.New("empty region")
 	}
 
 	return nil
