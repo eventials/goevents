@@ -19,6 +19,8 @@ var (
 	ErrEmptyConfig    = errors.New("empty config")
 	ErrEmptyAccessKey = errors.New("empty access key")
 	ErrEmptySecretKey = errors.New("empty secret key")
+	ErrEmptyRegion    = errors.New("empty region")
+	ErrEmptyQueueURL  = errors.New("empty queue url")
 )
 
 type snsMessagePayload struct {
@@ -63,12 +65,12 @@ func (c *ConsumerConfig) isValid() error {
 		return ErrEmptyConfig
 	}
 
-	if c.AccessKey == "" {
-		return ErrEmptyAccessKey
+	if c.Region == "" {
+		return ErrEmptyRegion
 	}
 
-	if c.SecretKey == "" {
-		return ErrEmptySecretKey
+	if c.QueueUrl == "" {
+		return ErrEmptyQueueURL
 	}
 
 	return nil
@@ -95,24 +97,7 @@ type consumer struct {
 	stopped             bool
 }
 
-func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
-	if err := config.isValid(); err != nil {
-		return nil, err
-	}
-
-	config.setDefaults()
-
-	creds := credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, "")
-
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String(config.Region),
-		Credentials: creds,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
+func newConsumerFromSession(config *ConsumerConfig, sess *session.Session) messaging.Consumer {
 	c := &consumer{
 		sqs:                sqs.New(sess),
 		config:             config,
@@ -135,7 +120,41 @@ func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
 		WaitTimeSeconds:     aws.Int64(c.config.WaitTimeSeconds),
 	}
 
-	return c, nil
+	return c
+}
+
+func NewConsumer(config *ConsumerConfig) (messaging.Consumer, error) {
+	if err := config.isValid(); err != nil {
+		return nil, err
+	}
+
+	config.setDefaults()
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(config.Region),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if _, credErr := sess.Config.Credentials.Get(); credErr != nil {
+		logrus.Info("[Consumer] No ambient credentials found; falling back to static credentials.")
+		if config.AccessKey == "" {
+			return nil, ErrEmptyAccessKey
+		}
+		if config.SecretKey == "" {
+			return nil, ErrEmptySecretKey
+		}
+		sess, err = session.NewSession(&aws.Config{
+			Region:      aws.String(config.Region),
+			Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return newConsumerFromSession(config, sess), nil
 }
 
 func MustNewConsumer(config *ConsumerConfig) messaging.Consumer {
